@@ -12,6 +12,10 @@ ComfyUI 自定义节点**工具库**（`xiheha-工具箱`），当前模块为�
 | 模型提示词控制 | 按词条启用/关闭提示词，实时预览 |
 | 提示词合并 | 按端口顺序合并最多四段提示词 |
 
+## 效果预览
+
+![工作流示例](workflow-example.png)
+
 ## 安装
 
 复制到 `ComfyUI/custom_nodes/xiheha-toolkit`，重启 ComfyUI 并刷新浏览器页面。
