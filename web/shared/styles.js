@@ -1,0 +1,26 @@
+// Single source of truth for the runtime-injected stylesheet.
+// toolkit.css at the web root is kept as the readable, non-injected reference.
+export const TOOLKIT_STYLES = `
+    .xh-root { box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; overflow: hidden; color: var(--fg-color, #ddd); font: 12px sans-serif; }
+    .xh-scroll { box-sizing: border-box; width: 100%; max-width: 100%; height: 100%; min-height: 0; max-height: 100%; overflow-y: auto; overflow-x: hidden; padding: 4px; }
+    .xh-row, .xh-preview-row, .xh-merge-row { box-sizing: border-box; min-width: 0; max-width: 100%; }
+    .xh-row { border-bottom: 1px solid rgba(255,255,255,.12); padding: 5px 2px 6px; }
+    .xh-row:last-child { border-bottom: 0; }
+    .xh-model { display: block; font-weight: 600; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .xh-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; }
+    .xh-button { box-sizing: border-box; height: 22px; min-height: 22px; line-height: 16px; border: 1px solid rgba(255,255,255,.25); border-radius: 5px; padding: 2px 7px; background: rgba(255,255,255,.08); color: inherit; cursor: pointer; font-size: 11px; }
+    .xh-button:hover { background: rgba(100,170,255,.28); }
+    .xh-button.selected { background: #3577a8; border-color: #83c7ff; color: white; }
+    .xh-muted { color: #999; padding: 8px 3px; }
+    .xh-buttons .xh-muted { box-sizing: border-box; display: inline-flex; align-items: center; height: 22px; min-height: 22px; padding: 2px 4px; line-height: 16px; }
+    .xh-error { color: #ff9b9b; padding: 8px 3px; white-space: normal; }
+    .xh-preview-row { border-bottom: 1px solid rgba(255,255,255,.2); padding: 6px 2px; }
+    .xh-preview-row:last-child { border-bottom: 0; }
+    .xh-section-label { color: #aaa; font-size: 10px; margin: 4px 0 2px; }
+    .xh-chip-strip { display: flex; flex-wrap: nowrap; gap: 4px; overflow-x: auto; overflow-y: hidden; white-space: nowrap; padding: 2px 0 4px; }
+    .xh-chip { flex: 0 0 auto; border: 1px solid rgba(130,190,235,.55); border-radius: 6px; padding: 2px 6px; background: rgba(60,120,165,.24); color: #e4f4ff; cursor: pointer; user-select: none; }
+    .xh-chip.disabled { border-color: rgba(150,150,150,.35); background: rgba(100,100,100,.2); color: #777; }
+    .xh-merge-row { padding: 4px 2px; }
+    .xh-merge-label { display: block; color: #aaa; font-size: 10px; margin-bottom: 2px; }
+    .xh-merge-text { box-sizing: border-box; display: block; width: 100%; max-width: 100%; min-width: 0; min-height: 34px; resize: vertical; color: inherit; background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 4px; font: 11px sans-serif; }
+`;
