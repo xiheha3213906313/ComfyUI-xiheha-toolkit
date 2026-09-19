@@ -12,6 +12,7 @@ from pathlib import Path
 
 PROFILE_NAME = "COMFYUI_PLUGIN_PROJECT.md"
 ALLOWED_STATUSES = {"complete", "partial", "declined"}
+ALLOWED_VALIDATION_LEVELS = {"simple", "medium", "careful"}
 FIELD_RE = re.compile(r"^([a-z_]+):\s*(.*?)\s*$")
 
 
@@ -53,7 +54,31 @@ def _parse_moment(value: str | None) -> datetime | None:
     return parsed if parsed.utcoffset() is not None else None
 
 
-def inspect(root: Path, now: datetime) -> dict[str, object]:
+def _validation_config(fields: dict[str, str | None], current_model: str | None) -> dict[str, object]:
+    level = fields.get("validation_level")
+    model = fields.get("validation_model")
+    configured_at = _parse_moment(fields.get("validation_configured_at"))
+    if level not in ALLOWED_VALIDATION_LEVELS or not model or not configured_at:
+        return {"status": "missing"}
+
+    normalized_current = str(current_model or "").strip()
+    if not normalized_current:
+        model_match: bool | None = None
+    elif model.casefold() == "unknown":
+        model_match = False
+    else:
+        model_match = model.casefold() == normalized_current.casefold()
+    return {
+        "status": "configured",
+        "level": level,
+        "model": model,
+        "configured_at": configured_at.isoformat(),
+        "current_model": normalized_current or None,
+        "model_match": model_match,
+    }
+
+
+def inspect(root: Path, now: datetime, current_model: str | None = None) -> dict[str, object]:
     path = root.resolve() / PROFILE_NAME
     result: dict[str, object] = {"profile": str(path), "status": "missing"}
     if not path.is_file():
@@ -68,10 +93,16 @@ def inspect(root: Path, now: datetime) -> dict[str, object]:
     profile_status = fields.get("profile_status")
     if profile_status not in ALLOWED_STATUSES:
         return {**result, "status": "invalid", "error": "invalid profile_status"}
+    validation = _validation_config(fields, current_model)
     if profile_status in {"complete", "partial"}:
         if not _parse_moment(fields.get("analyzed_at")):
             return {**result, "status": "invalid", "error": "missing or invalid analyzed_at"}
-        return {**result, "status": "ready", "profile_status": profile_status}
+        return {
+            **result,
+            "status": "ready",
+            "profile_status": profile_status,
+            "validation": validation,
+        }
 
     declined_at = _parse_moment(fields.get("declined_at"))
     remind_after = _parse_moment(fields.get("remind_after"))
@@ -85,12 +116,14 @@ def inspect(root: Path, now: datetime) -> dict[str, object]:
         "status": "reminder_due" if due else "declined",
         "profile_status": profile_status,
         "remind_after": remind_after.isoformat(),
+        "validation": validation,
     }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd(), help="ComfyUI plugin root")
+    parser.add_argument("--model", help="Exact current model identifier from product/runtime metadata")
     parser.add_argument(
         "--now",
         type=_parse_moment,
@@ -100,7 +133,7 @@ def main() -> int:
     args = parser.parse_args()
     if args.now is None:
         parser.error("--now must be a timezone-aware ISO-8601 timestamp")
-    print(json.dumps(inspect(args.root, args.now), ensure_ascii=False, indent=2))
+    print(json.dumps(inspect(args.root, args.now, args.model), ensure_ascii=False, indent=2))
     return 0
 
 

@@ -15,6 +15,15 @@ Follow the plugin's existing frontend architecture and the installed ComfyUI fro
 - Preserve external node IDs, input names, widget names, and slot semantics verbatim; they are owned by the other plugin.
 - Clean up DOM elements, listeners, observers, and timers on node removal when the current architecture requires it.
 
+Move meaningful non-DOM state transitions into pure functions when practical, especially persisted-state parsing, dirty/clean comparison, model/config switching, index allocation, save-payload construction, partial-success reconciliation, and stale-response rejection. Test those functions with the project's JavaScript test tooling; when no tooling exists, a small dependency-free Node test is preferable to leaving all state logic for manual UI testing.
+
+Classify frontend state:
+
+- Persist only user choices and drafts that must survive workflow save/reload.
+- Keep loading flags, errors, request sequence IDs, DOM references, timers, and transient server responses runtime-only.
+
+For large hidden state, evaluate serialized workflow size, clone behavior, and input frequency. Use an appropriate debounce when every keystroke would repeatedly serialize long prompts or mark the graph dirty; do not delay state so long that a workflow save can miss recent edits.
+
 When a frontend mirror exists, adding/changing a node commonly requires updating constants, port labels, a node module/controller, entry-point dispatch, styles, state parsing, and manual workflow checks. Use the project profile to identify the actual mirrors.
 
 ## Local routes and trust boundaries
@@ -25,6 +34,15 @@ When a frontend mirror exists, adding/changing a node commonly requires updating
 - Put reusable parsing in a core layer; the route should adapt HTTP to that logic.
 - Keep local preview APIs local. Do not add internet calls, analytics, update checks, crash reporting, or remote configuration without explicit user authorization.
 - Bound scans and response sizes. Handle malformed files as user-visible per-item errors where one bad file should not terminate ComfyUI.
+
+For async saves as well as previews:
+
+- send an immutable snapshot;
+- prevent duplicate in-flight submissions;
+- do not let an older success clear edits made after its snapshot;
+- reconcile per-item success/failure according to the declared batch contract;
+- retain failed or newer drafts;
+- use mtime/hash/version conflict detection when external writers are plausible.
 
 ## Cross-layer payload audit
 

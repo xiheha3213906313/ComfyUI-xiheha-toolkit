@@ -6,6 +6,9 @@ analyzed_at: 2026-09-19T14:41:11+08:00
 declined_at: null
 remind_after: null
 analysis_scope: full-static
+validation_level: simple
+validation_model: gpt-5
+validation_configured_at: 2026-09-19T17:11:37.321065+08:00
 ---
 
 # xiheha-toolkit 项目档案
@@ -15,10 +18,10 @@ analysis_scope: full-static
 ## Purpose and boundaries
 
 - ComfyUI 自定义节点工具库，节点分类根为 `xiheha-工具箱`，公共节点 ID 使用 `XH_` 前缀。
-- 当前功能模块读取基础模型/LoRA 同目录 TXT 或 JSON sidecar，完成来源采集、配置选择、词条开关、提示词合并和提示词展示。
+- 当前功能模块读取和编辑基础模型/LoRA 同目录 TXT 或 JSON sidecar，完成来源采集、配置选择、词条开关、提示词合并和提示词展示。
 - 采用经典 `NODE_CLASS_MAPPINGS` / `NODE_DISPLAY_NAME_MAPPINGS` 注册方式，前端由 `WEB_DIRECTORY = "./web"` 提供原生 ES Module 扩展。
 - 这是可继续增加同级工具的通用库，不应把仓库边界限定为 sidecar 提示词工具。
-- 当前版本源为根 `__init__.py` 的 `__version__ = "0.5.1"`。
+- 当前版本源为根 `__init__.py` 的 `__version__ = "0.6.0"`。
 
 ## Authoritative files
 
@@ -26,8 +29,8 @@ analysis_scope: full-static
 | --- | --- | --- |
 | `__init__.py` | 版本、Python 节点导入、公共 ID/显示名、`WEB_DIRECTORY`、路由注册 | 新节点/改名/发版必须核对这里 |
 | `nodes/*.py` | ComfyUI 输入输出契约与执行行为 | 参数、返回槽、UI payload、测试、前端镜像 |
-| `core/*.py` | 无 UI 的来源归一化、sidecar 解析、提示词处理 | 所有生产者/消费者及边界测试 |
-| `server.py` | 本地只读预览接口 | `web/shared/api.js`、输入校验、路径安全测试 |
+| `core/*.py` | 无 UI 的来源归一化、sidecar 解析/保存、提示词处理 | 所有生产者/消费者及边界测试 |
+| `server.py` | 本地预览与受限保存接口 | `web/shared/api.js`、输入校验、路径安全测试 |
 | `web/shared/constants.js` | 前端节点 ID、外部 loader 映射、端口显示标签 | Python 注册/端口顺序/外部真实标识 |
 | `web/xiheha_toolkit.js` | 唯一 `app.registerExtension` 入口和节点模块分发 | 新前端节点模块、外部 observer |
 | `web/nodes/*.js` | 每节点 controller 和生命周期 patch | Python 节点 ID、状态 widget、payload key |
@@ -115,6 +118,18 @@ analysis_scope: full-static
 | 执行返回 | `{"ui": {"xh_ports": [<两项 JSON 字符串>]}, "result": (positive, negative)}` |
 | 前端 | `web/nodes/prompt-display.js`；隐藏原 widget，从 selector/preview 实时读取或用执行 payload 更新，controller 为 `__xhPromptDisplay` |
 
+### `XH_PromptConfigEditor`
+
+| 项 | 值 |
+| --- | --- |
+| 实现/显示名 | `nodes/prompt_config_editor.py::PromptConfigEditor` / `编辑提示词配置` |
+| 分类/函数 | `xiheha-工具箱/提示词` / `edit`；`OUTPUT_NODE = True` |
+| 必选输入（声明顺序） | `source`: `XH_SOURCE`，显示 `模型列表`；`editor_state`: `STRING`、默认 `{}`、`hidden: true` |
+| 输出 | 无输出，`RETURN_TYPES = ()` |
+| 行为 | 模型下拉选择；编辑既有配置或暂存一个“添加”配置；保存按钮以一次请求提交所有已加载模型的草稿；后端先生成全部写入计划，再按来源逐个提交，不提供跨文件回滚 |
+| 持久状态 | `editor_state` 保存所选模型、各模型所选配置和未保存正负提示词草稿；不包含绝对路径 |
+| 前端 | `web/nodes/prompt-config-editor.js`；controller 为 `__xhPromptConfigEditor`，异步扫描使用 `refreshSequence` |
+
 ## Custom data and persisted state
 
 ### `XH_SOURCE`
@@ -135,7 +150,7 @@ analysis_scope: full-static
 - `source_name` 必须是相对对应 ComfyUI 模型目录的路径；不允许绝对路径或 `..` 路径组件。
 - `folder_name` 当前只允许 `loras`、`checkpoints`、`diffusion_models`。
 - LoRA tuple/dict 在 `core/source_utils.py::stack_item_to_record` 归一化；强度字段不进入 `XH_SOURCE`。
-- `StackSource` 和 `ModelSource` 是生产者，`PromptConfigSelector` 与预览接口是消费者。
+- `StackSource` 和 `ModelSource` 是生产者，`PromptConfigSelector`、`PromptConfigEditor` 与本地接口是消费者。
 
 ### 解析结果
 
@@ -161,13 +176,15 @@ analysis_scope: full-static
 
 TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支持标签后续多行；没有标签的纯文本视为配置 1 的正向提示词。JSON 递归查找同类标签，并兼容顶层 `positive`/`prompt`/`positive_prompt` 与 `negative`/`negative_prompt`。
 
+编辑器保存已有 sidecar 时沿用原文件路径和扩展名；没有 sidecar 时创建 `模型名.txt`。当前保存策略是**规范化重写**，不是无损局部更新：TXT 重写为 `正向/负向` 加编号标签，JSON 重写为同名键的顶层对象；未知字段、未识别文本、原键顺序、BOM、原换行风格和末尾空白不保证保留。涉及用户原文件时，不得把“原路径写回”描述成“内容无损”。
+
 ## Frontend integration
 
 - `web/xiheha_toolkit.js` 是唯一允许调用 `app.registerExtension` 的入口。
-- 节点模块映射：`stack-source.js`、`model-source.js`、`prompt-selector.js`、`prompt-preview.js`、`prompt-merger.js`、`prompt-display.js`。
+- 节点模块映射：`stack-source.js`、`model-source.js`、`prompt-selector.js`、`prompt-preview.js`、`prompt-merger.js`、`prompt-display.js`、`prompt-config-editor.js`。
 - 单向依赖目标：常量/样式 → 共享 DOM/API/上游 → 节点模块 → 入口。避免节点模块循环依赖。
 - `web/shared/constants.js::PORT_LABELS` 是 Python 端口显示名的前端镜像；输出数组索引必须与 Python 槽位一致。
-- selector/preview/merger/display 的 DOM 区域最小尺寸当前为 400×300，滚动 widget 最小内容高度 200。
+- selector/preview/merger/display 的 DOM 区域最小尺寸当前为 400×300；config editor 为 520×370，滚动 widget 最小内容高度 280。
 - 运行时样式来自 `web/shared/styles.js::TOOLKIT_STYLES`；`web/toolkit.css` 是同步维护的可读参考。
 - 执行 UI payload key 只有 `xh_rows` 和 `xh_ports`；前端通过 `parseUiPayload` 读取数组第一个 JSON 值。
 
@@ -183,7 +200,10 @@ TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支�
 
 ## Routes and trust boundaries
 
-唯一接口：`POST /xiheha_toolkit/inspect`，由 `register_routes()` 幂等注册，仅供当前 ComfyUI 前端预览。
+接口由 `register_routes()` 幂等注册，仅供当前 ComfyUI 前端使用：
+
+- `POST /xiheha_toolkit/inspect`：只读扫描配置。
+- `POST /xiheha_toolkit/save`：保存一个或多个来源的完整配置列表。
 
 请求：
 
@@ -197,11 +217,22 @@ TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支�
 {"sources": [{"source_name": "example.safetensors", "display_name": "example", "config_file": null, "configs": [], "error": null, "folder_name": "loras"}]}
 ```
 
+保存请求：
+
+```json
+{"sources": [{"source_name": "example.safetensors", "folder_name": "loras", "configs": [{"index": 1, "positive": "trigger", "negative": "lowres"}]}]}
+```
+
+保存响应仍为对应来源的 `SourceInspection` 数组，供编辑器用后端最终状态替换本地基线。
+
 - 非 JSON、`sources` 非数组返回 400；一次最多 100 项。
 - 路由只接纳 dict 项且字段为字符串，再由解析层限制目录并校验相对路径。
 - `folder_paths.get_full_path` 负责注册目录解析；不把绝对路径返回前端。
 - 单文件解析异常转换为简短 `error`，不泄漏堆栈；当前异常文本可能包含解析器消息，修改错误策略时需检查敏感信息。
 - 前端调用仅在 `web/shared/api.js`，无互联网请求。
+- 保存接口一次最多接收 100 个来源、每个来源 100 个配置、单项正向或负向提示词 100000 字符；路径由后端根据 `source_name`/`folder_name` 重新解析。
+- 保存前确认模型真实路径仍位于 ComfyUI 登记目录；已有 sidecar 原路径原扩展名写回，无 sidecar 时创建 `模型名.txt`，写入采用同目录临时文件后原子替换。
+- 批量保存会先验证全部请求并生成全部写入计划，再逐个文件提交。单文件替换具备原子性，但多个文件不构成事务：后续文件失败时，先前文件可能已更新且不会回滚；接口当前以整体 500 返回，响应不列出已成功项。前端在错误响应下保留本地草稿，但这不代表磁盘上没有部分成功。修改保存协议前必须明确部分失败、重试和草稿清理语义。
 
 ## Model, latent, device, and memory behavior
 
@@ -216,7 +247,9 @@ TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支�
 - 当前已完成一次性 `LPT_` → `XH_`、`LORA_PROMPT_SOURCE` → `XH_SOURCE`、旧来源字段 → `sources/source_name` 迁移；当前代码不保留旧名兼容分支。
 - 不为外部 easy-use 标识创建本地别名，不修改其端口/widget 名。
 - 前端预览和 Python 队列执行必须同时实现同一行为；不能只修一侧。
-- `selection_state` 和 `token_state` 属于保存工作流的状态，DOM controller 缓存不属于持久格式。
+- `selection_state`、`token_state` 和 `editor_state` 属于保存工作流的状态，DOM controller 缓存不属于持久格式。
+- `editor_state` 保存编辑器当前模型/配置选择和未保存草稿；保存成功后对应草稿会被清除。
+- 编辑器保存期间禁用文本区和操作按钮，并以请求开始时构造的 payload 提交；若将来允许保存中继续编辑，旧响应不得清除请求开始后产生的新草稿。
 - 选择器异步请求必须保持序列保护，防止旧响应覆盖新来源。
 
 ## Validation map
@@ -245,14 +278,15 @@ Get-ChildItem -Recurse web -Filter *.js | ForEach-Object { node --check $_.FullN
 
 ### 手工 ComfyUI 验收
 
-1. 插件重载/ComfyUI 重启后，六个节点能被搜索并显示正确分类、名称和端口。
+1. 插件重载/ComfyUI 重启后，七个节点能被搜索并显示正确分类、名称和端口。
 2. Checkpoint/UNET loader → `模型列表获取` → 下游 MODEL 的透传不变；第二输出 → selector 能预览配置。
 3. easy-use `easy loraStack`（含 `optional_lora_stack` 级联）→ stack adapter → selector 能按顺序获得 LoRA。
 4. 快速修改上游 loader/LoRA 后 selector 只显示最新请求结果。
 5. selector 三路连接 preview 后词条开关正确，保存并重开工作流后选择与开关状态不丢失。
 6. merger 空端口占位和顺序正确；display 正负文本实时/执行后显示并保持两路透传。
-7. 无 sidecar、错误 sidecar、无模型源元数据时提示清晰且不无故阻断模型透传。
-8. 浏览器控制台无新增异常，DOM 不重复安装或越出节点。
+7. config editor 可切换模型/配置，修改后星号位于按钮右上边框，跨模型草稿保留；保存后原配置文件更新，“添加”转为新编号并继续出现新“添加”。
+8. 无 sidecar 时 editor 创建 `模型名.txt`；错误 sidecar、无模型源元数据时提示清晰且不无故阻断模型透传。
+9. 浏览器控制台无新增异常，DOM 不重复安装或越出节点。
 
 ## Documentation and release bookkeeping
 

@@ -9,16 +9,27 @@ Use this skill for ComfyUI custom-node repositories. Keep project facts outside 
 
 ## Start with the project profile
 
-1. Find the plugin root, then run:
+1. Find the plugin root. Obtain the exact current model identifier from product/runtime metadata when it is exposed; never infer it from capability. Then run:
 
    ```text
-   python <skill-dir>/scripts/check_project_profile.py --root <plugin-root>
+   python <skill-dir>/scripts/check_project_profile.py --root <plugin-root> --model <exact-model-id>
    ```
+
+   Omit `--model` when no trustworthy identifier is available.
 
 2. The canonical profile is `<plugin-root>/COMFYUI_PLUGIN_PROJECT.md`.
 3. If the result is `ready` or `partial`, read the whole profile before reading implementation files. Treat it as an index, not unquestionable truth: verify every fact in the area being changed against current source.
 4. If the result is `missing`, `declined`, `reminder_due`, or `invalid`, read [references/project-profile-bootstrap.md](references/project-profile-bootstrap.md) and follow it exactly before editing. This is the only branch that loads the bootstrap procedure, including safe creation of a minimal root `AGENTS.md` when no project instruction file exists.
 5. If the profile contradicts source, source wins for the current change. Correct the profile in the same task when the discrepancy is structural rather than transient.
+
+When the checker result includes a `validation` object, read it before work. A missing/invalid profile has no usable validation object, so the bootstrap procedure collects the choice instead:
+
+- `missing`: ask the user to choose `simple`, `medium`, or `careful`, then persist the answer and current model with `scripts/set_validation_strategy.py`.
+- `configured` with `model_match: false`: state the configured model and validation level, then ask whether to keep that level or change it for the current model. Wait for the answer and persist the chosen level with the current model so the question does not repeat.
+- `configured` with `model_match: true`: on the first project-related turn of a new conversation, briefly remind the user of the active validation level and continue without pausing.
+- `configured` with `model_match: null`: state the active level only on a new conversation and continue; do not invent a model mismatch.
+
+A new conversation means no earlier visible turn has discussed or modified this project. Do not repeat the reminder within an ongoing conversation. Read [references/validation-strategies.md](references/validation-strategies.md) for selection, persistence, overrides, and risk floors.
 
 Do not silently substitute README files, `AGENTS.md`, memory, or guesses for the canonical profile. Read repository instruction files as well; they can add project-specific constraints.
 
@@ -27,7 +38,9 @@ Do not silently substitute README files, `AGENTS.md`, memory, or guesses for the
 - For any code change or review, read [references/change-workflow.md](references/change-workflow.md).
 - When adding or changing nodes, inputs, outputs, custom types, list nodes, lazy nodes, execution return values, model/latent data, or registrations, also read [references/node-contracts.md](references/node-contracts.md).
 - When changing JavaScript, TypeScript, widgets, DOM UI, LiteGraph hooks, routes, serialization, previews, or browser/backend payloads, also read [references/frontend-and-api.md](references/frontend-and-api.md).
+- When diagnosing ComfyUI theme colors, popup seams, DOM-over-canvas appearance, node whitespace, or DOM widget sizing, also read [references/frontend-visual-debugging.md](references/frontend-visual-debugging.md).
 - Before claiming completion, read and execute [references/validation.md](references/validation.md).
+- When a task reads, rewrites, saves, creates, or batch-updates user-owned files, also read [references/file-writing.md](references/file-writing.md).
 - When creating or repairing the canonical profile, use [references/project-profile-schema.md](references/project-profile-schema.md) as its schema.
 
 Load only the references that match the task, except that validation is always required for implementation work.

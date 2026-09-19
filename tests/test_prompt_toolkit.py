@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from core.config_parser import find_sidecar, inspect_source, parse_sidecar
+from core.config_parser import find_sidecar, inspect_source, parse_sidecar, save_source_configs
 from core.prompt_utils import ensure_trailing_comma, normalize_prompt_line
 from core.source_utils import model_to_source
 from nodes.easy_lora_stack import StackSource
@@ -15,6 +15,7 @@ from nodes.prompt_preview import PromptPreview, build_preview_rows, preview_toke
 from nodes.prompt_selector import build_prompt_rows
 from nodes.prompt_merge import PromptMerger
 from nodes.prompt_display import PromptDisplay
+from nodes.prompt_config_editor import PromptConfigEditor
 
 
 class PromptUtilityTests(unittest.TestCase):
@@ -82,6 +83,82 @@ class SidecarTests(unittest.TestCase):
                     sidecar = make_sidecar(model)
                     sidecar.write_text("正向：trigger", encoding="utf-8")
                     self.assertEqual(find_sidecar(model), sidecar)
+
+    def test_save_existing_txt_sidecar_in_place_and_add_config(self):
+        with tempfile.TemporaryDirectory() as temp:
+            model = Path(temp) / "sample.safetensors"
+            model.write_bytes(b"")
+            sidecar = model.with_suffix(".txt")
+            sidecar.write_text("正向：old\n负向：bad\n", encoding="utf-8")
+            configs = [
+                {"index": 1, "positive": "new", "negative": "bad"},
+                {"index": 2, "positive": "style", "negative": "lowres"},
+            ]
+
+            with patch("core.config_parser.folder_paths.get_full_path", return_value=str(model)), patch(
+                "core.config_parser.folder_paths.get_folder_paths", return_value=[str(Path(temp))]
+            ):
+                inspection = save_source_configs("sample.safetensors", "loras", configs)
+
+            self.assertEqual(inspection.config_file, "sample.txt")
+            self.assertEqual([(item.index, item.positive) for item in parse_sidecar(sidecar)], [(1, "new"), (2, "style")])
+
+    def test_save_existing_json_sidecar_in_place(self):
+        with tempfile.TemporaryDirectory() as temp:
+            model = Path(temp) / "sample.safetensors"
+            model.write_bytes(b"")
+            sidecar = Path(str(model) + ".json")
+            sidecar.write_text(json.dumps({"正向": "old"}), encoding="utf-8")
+
+            with patch("core.config_parser.folder_paths.get_full_path", return_value=str(model)), patch(
+                "core.config_parser.folder_paths.get_folder_paths", return_value=[str(Path(temp))]
+            ):
+                save_source_configs(
+                    "sample.safetensors",
+                    "checkpoints",
+                    [{"index": 1, "positive": "new", "negative": "bad"}],
+                )
+
+            self.assertTrue(sidecar.is_file())
+            self.assertEqual(json.loads(sidecar.read_text(encoding="utf-8")), {"正向": "new", "负向": "bad"})
+
+    def test_save_without_sidecar_creates_model_name_txt(self):
+        with tempfile.TemporaryDirectory() as temp:
+            model = Path(temp) / "sample.safetensors"
+            model.write_bytes(b"")
+
+            with patch("core.config_parser.folder_paths.get_full_path", return_value=str(model)), patch(
+                "core.config_parser.folder_paths.get_folder_paths", return_value=[str(Path(temp))]
+            ):
+                inspection = save_source_configs(
+                    "sample.safetensors",
+                    "diffusion_models",
+                    [{"index": 1, "positive": "new", "negative": ""}],
+                )
+
+            target = model.with_suffix(".txt")
+            self.assertEqual(inspection.config_file, "sample.txt")
+            self.assertTrue(target.is_file())
+            self.assertEqual(parse_sidecar(target)[0].positive, "new")
+
+    def test_save_rejects_unsafe_source_name(self):
+        for source_name in ("../sample.safetensors", "C:/models/sample.safetensors"):
+            with self.subTest(source_name=source_name):
+                with self.assertRaisesRegex(ValueError, "模型名称无效"):
+                    save_source_configs(source_name, "loras", [])
+
+    def test_save_rejects_resolved_model_outside_registered_folder(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            registered = root / "loras"
+            registered.mkdir()
+            outside = root / "outside.safetensors"
+            outside.write_bytes(b"")
+            with patch("core.config_parser.folder_paths.get_full_path", return_value=str(outside)), patch(
+                "core.config_parser.folder_paths.get_folder_paths", return_value=[str(registered)]
+            ):
+                with self.assertRaisesRegex(ValueError, "来源文件不在模型目录"):
+                    save_source_configs("outside.safetensors", "loras", [])
 
 
 class NodeBehaviorTests(unittest.TestCase):
@@ -275,6 +352,15 @@ class NodeBehaviorTests(unittest.TestCase):
         self.assertEqual(PromptDisplay.RETURN_NAMES, ("正向提示词", "负向提示词"))
         self.assertEqual(result["result"], ("positive text", "negative text"))
         self.assertEqual(json.loads(result["ui"]["xh_ports"][0]), ["positive text", "negative text"])
+
+    def test_config_editor_has_one_required_source_port_and_no_outputs(self):
+        inputs = PromptConfigEditor.INPUT_TYPES()
+        self.assertEqual(list(inputs["required"]), ["source", "editor_state"])
+        self.assertEqual(inputs["required"]["source"][0], "XH_SOURCE")
+        self.assertTrue(inputs["required"]["editor_state"][1]["hidden"])
+        self.assertEqual(PromptConfigEditor.RETURN_TYPES, ())
+        self.assertTrue(PromptConfigEditor.OUTPUT_NODE)
+        self.assertEqual(PromptConfigEditor().edit({"sources": []}, "{}"), ())
 
 
 if __name__ == "__main__":

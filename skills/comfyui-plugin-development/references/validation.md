@@ -1,45 +1,119 @@
 # Validation and completion
 
-Validation is proportional to the affected risk, but implementation work always needs at least syntax/import checks and targeted tests when the repository supports them.
+Read [validation-strategies.md](validation-strategies.md) first and apply its configured level plus any task risk floors. Validation should buy confidence, not consume time mechanically.
 
-## Build the validation set
+## Plan before implementation
 
-Use commands from `COMFYUI_PLUGIN_PROJECT.md`, repository configuration, CI, and the current environment. Do not invent a passing command by skipping required setup.
+For `medium` and `careful`, make a compact internal plan before editing:
 
-1. Run the narrow regression tests for changed behavior.
-2. Run the full plugin test suite.
-3. Compile or parse all changed Python files and import the plugin/registry in a ComfyUI-capable environment.
-4. Syntax-check or lint every changed frontend file using the project's toolchain.
-5. Run static type/lint/build checks configured by the repository when relevant.
-6. Review the final diff and search changed identifiers again.
+| Risk | Evidence | Executable now? |
+| --- | --- | --- |
+| Example: node registration | controlled import | yes |
+| Example: persisted UI state | pure-function test plus save/reload | automated yes; live UI blocked if restart unsafe |
 
-## Risk-specific checks
+For `simple`, let the model select high-signal checks without producing the table unless a risk floor applies.
 
-| Area | Minimum additional evidence |
+## Execution preflight
+
+Before the first formal validation attempt, copy the interpreter, working directory, environment variables, and commands from `COMFYUI_PLUGIN_PROJECT.md` exactly. Do not improvise a command and correct it later when the profile already supplies one.
+
+When paths or imports are uncertain, run:
+
+```text
+python <skill-dir>/scripts/validate_environment.py \
+  --plugin-root <plugin-root> --comfy-root <comfy-root>
+```
+
+Verify:
+
+- the actual Python executable;
+- plugin and ComfyUI roots;
+- `folder_paths` resolves from the intended ComfyUI root rather than a conflicting local module;
+- the plugin parent and test working directory are correct;
+- the recommended test environment/command is recorded before execution.
+
+Use the project-specific command even when the helper suggests a generic fallback. If a formal command fails because the preflight was ignored or incomplete, report that failed attempt later.
+
+## Automated evidence by level
+
+Always review current source, working-tree status, changed identifiers, and the final diff.
+
+### Simple
+
+- changed-file Python compilation or frontend syntax checks;
+- directly relevant focused regression tests when present;
+- `git diff --check` or equivalent;
+- risk-floor checks only where the change demands them.
+
+The model may skip the full suite, controlled import, repository-wide syntax scan, and manual UI for a low-risk task, but must list them as not run when they would normally be relevant.
+
+### Medium
+
+- targeted tests;
+- practical full plugin suite for affected layers;
+- all affected Python/frontend syntax checks;
+- controlled import for node registration, root imports, or route changes;
+- conditional manual checks triggered below.
+
+### Careful
+
+- complete configured test suite and repository-wide syntax checks;
+- controlled import when applicable;
+- all relevant boundary, malformed-input, compatibility, concurrency, and persistence cases;
+- full applicable manual path when safe and available.
+
+For a controlled import, use:
+
+```text
+python <skill-dir>/scripts/check_plugin_import.py \
+  --plugin-root <plugin-root> --comfy-root <comfy-root>
+```
+
+It verifies mappings, display mappings, `WEB_DIRECTORY`, route registration, and repeated import behavior with a controlled `PromptServer.instance`. Label it **controlled import**, never real ComfyUI startup.
+
+## Risk-specific evidence
+
+| Area | Evidence floor |
 | --- | --- |
-| Node contract | Registry/import plus exact declaration and return-shape tests |
-| Model/latent/tensor | Identity or expected mutation, shape/batch, dtype, device, memory/offload path; GPU path if claimed |
-| Filesystem/sidecar | allowed roots, nested paths, missing file, malformed file, traversal/absolute path rejection |
-| Frontend | syntax plus real node creation, labels, connect/disconnect, state save/reload, execution payload |
-| Async preview | rapid successive changes proving stale work cannot win |
-| External plugin integration | installed compatible version and real connection path, or explicitly `not run` |
-| Route | malformed JSON, wrong types, limits, errors, valid request, no sensitive path leakage |
-| Breaking workflow change | migration behavior and representative old/new workflow evidence |
+| Node contract | Exact declaration/return tests; controlled import for registration changes |
+| Model/latent/tensor | Identity or intended mutation, shape/batch, dtype, device, precision, memory/offload path; GPU path only if claimed |
+| Existing/batch files | Chosen preservation and transaction policies, unknown-content round trip, failure after a partial write, retry/conflict behavior |
+| Filesystem/sidecar | Allowed roots, nested/missing/malformed files, traversal and absolute-path rejection |
+| Frontend state | Pure-function tests for persistence/dirty/save transitions where practical; syntax alone is insufficient |
+| Async preview/save | Rapid changes proving stale completion cannot win or clear newer edits |
+| External plugin | Installed compatible version and real connection, or explicitly not run |
+| Route | Malformed JSON, wrong types, limits, valid request, per-item errors, no sensitive-path leakage |
+| Breaking workflow change | User-approved migration plus representative old/new workflow evidence |
 
 ## Manual ComfyUI acceptance
 
-When UI, registration, graph traversal, model loading, or execution behavior changes, restart/reload the plugin as required and verify a minimal workflow in ComfyUI. Check node search/creation, localized labels, connection types, execution, previews, saved workflow reload, upstream changes, errors, and browser console.
+Run only the portions triggered by the change.
 
-If a required runtime, browser, GPU, model, or optional plugin is unavailable, do not simulate success. Report it as not run and explain the missing prerequisite.
+Required for affected live UI/node behavior:
+
+- node can be searched and created;
+- port types/labels and core interaction work;
+- browser console has no new error.
+
+Add save/reopen only for persisted state. Add real external-plugin wiring only for that integration. Add temporary model/sidecar create/edit/failure recovery only for file-writing features.
+
+Before restarting or refreshing ComfyUI, check for an unsaved workflow, active queue, unsaved editor state, and other user work. Never restart, refresh, clear, or overwrite that state without explicit authorization. Safe alternatives are user-approved save/restart, an independent test instance/port, or a frontend-only reload when the change truly requires no Python re-registration. If none is safe, mark live acceptance `not run` and state the blocker.
 
 ## Final report
 
-State:
+Use these categories:
 
-- completed behavior and files;
-- tests/checks with exact commands and pass/fail counts;
-- manual ComfyUI checks actually performed;
-- profile/docs/version updates;
-- remaining limitations or unverified environments.
+- **Passed** — exact command/check and result.
+- **Failed: implementation** — still failing because of the code.
+- **Failed then corrected: environment/invocation** — include every material formal command that failed before a later pass and explain why.
+- **Not run** — check and missing prerequisite/blocker.
 
-Never turn “syntax passed” into “feature verified,” and never call a skipped check successful.
+Do not hide an earlier formal failure merely because a corrected command passed. Distinguish these claims:
+
+- “implementation completed” — code and static/automated work are done;
+- “automated tests passed” — only named tests passed;
+- “controlled import passed” — not a real startup;
+- “live ComfyUI UI passed” — only after actual UI operation;
+- “fully verified” — all relevant automated and live paths passed.
+
+State the active validation level and any task-local risk-floor escalation. Never call skipped work successful.

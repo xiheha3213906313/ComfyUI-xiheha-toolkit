@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import tempfile
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,15 @@ class SourceInspection:
             "error": self.error,
             "folder_name": self.folder_name,
         }
+
+
+@dataclass(frozen=True)
+class ConfigSavePlan:
+    source_name: str
+    folder_name: str
+    target: Path
+    configs: tuple[PromptConfig, ...]
+    content: str
 
 
 def _label_info(label: str) -> tuple[str, int] | None:
@@ -161,6 +171,115 @@ def parse_sidecar(path: Path) -> list[PromptConfig]:
     if path.suffix.casefold() == ".json":
         return _parse_json(text)
     return _parse_text(text)
+
+
+def _coerce_configs(configs: object) -> tuple[PromptConfig, ...]:
+    if not isinstance(configs, (list, tuple)):
+        raise ValueError("configs 必须是数组")
+
+    normalized: list[PromptConfig] = []
+    seen: set[int] = set()
+    for item in configs:
+        if isinstance(item, PromptConfig):
+            index = item.index
+            positive = item.positive
+            negative = item.negative
+        elif isinstance(item, dict):
+            index = item.get("index")
+            positive = item.get("positive", "")
+            negative = item.get("negative", "")
+        else:
+            raise ValueError("配置项格式无效")
+        if not isinstance(index, int) or isinstance(index, bool) or index < 1:
+            raise ValueError("配置编号必须是正整数")
+        if index in seen:
+            raise ValueError("配置编号不能重复")
+        if not isinstance(positive, str) or not isinstance(negative, str):
+            raise ValueError("提示词必须是字符串")
+        seen.add(index)
+        normalized.append(
+            PromptConfig(
+                index=index,
+                positive=clean_prompt_text(positive),
+                negative=clean_prompt_text(negative),
+            )
+        )
+    return tuple(sorted(normalized, key=lambda config: config.index))
+
+
+def _serialize_text(configs: tuple[PromptConfig, ...]) -> str:
+    lines: list[str] = []
+    for config in configs:
+        suffix = "" if config.index == 1 else str(config.index)
+        lines.extend((f"正向{suffix}：{config.positive}", f"负向{suffix}：{config.negative}"))
+    return "\n".join(lines) + ("\n" if lines else "")
+
+
+def _serialize_json(configs: tuple[PromptConfig, ...]) -> str:
+    payload: dict[str, str] = {}
+    for config in configs:
+        suffix = "" if config.index == 1 else str(config.index)
+        payload[f"正向{suffix}"] = config.positive
+        payload[f"负向{suffix}"] = config.negative
+    return json.dumps(payload, ensure_ascii=False, indent=2) + "\n"
+
+
+def prepare_source_config_save(
+    source_name: object,
+    folder_name: object,
+    configs: object,
+) -> ConfigSavePlan:
+    normalized = _safe_source_name(source_name)
+    folder = str(folder_name or "loras")
+    if not normalized:
+        raise ValueError("模型名称无效")
+    if folder not in SOURCE_FOLDERS:
+        raise ValueError("不支持的模型目录")
+
+    model_path_value = folder_paths.get_full_path(folder, normalized)
+    if not model_path_value:
+        raise ValueError("来源文件未找到")
+    model_path = Path(model_path_value).resolve()
+    roots = [Path(root).resolve() for root in folder_paths.get_folder_paths(folder)]
+    if not any(model_path == root or root in model_path.parents for root in roots):
+        raise ValueError("来源文件不在模型目录")
+    if not model_path.is_file():
+        raise ValueError("来源文件未找到")
+    target = find_sidecar(model_path) or model_path.with_suffix(".txt")
+    normalized_configs = _coerce_configs(configs)
+    content = _serialize_json(normalized_configs) if target.suffix.casefold() == ".json" else _serialize_text(normalized_configs)
+    return ConfigSavePlan(normalized, folder, target, normalized_configs, content)
+
+
+def commit_source_config_save(plan: ConfigSavePlan) -> SourceInspection:
+    temporary_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="\n",
+            dir=plan.target.parent,
+            prefix=f".{plan.target.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            handle.write(plan.content)
+            handle.flush()
+            os.fsync(handle.fileno())
+            temporary_path = handle.name
+        os.replace(temporary_path, plan.target)
+        temporary_path = None
+    finally:
+        if temporary_path:
+            try:
+                os.unlink(temporary_path)
+            except OSError:
+                pass
+    return inspect_source(plan.source_name, plan.folder_name)
+
+
+def save_source_configs(source_name: object, folder_name: object, configs: object) -> SourceInspection:
+    return commit_source_config_save(prepare_source_config_save(source_name, folder_name, configs))
 
 
 def _display_name(source_name: str) -> str:

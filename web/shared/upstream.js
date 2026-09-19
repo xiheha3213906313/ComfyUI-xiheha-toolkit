@@ -4,6 +4,7 @@ import {
     MODEL_SOURCE_NODE,
     EASY_USE_STACK_NODE,
     SELECTOR_NODE,
+    CONFIG_EDITOR_NODE,
     MODEL_LOADER_SOURCES,
 } from "./constants.js";
 import {
@@ -94,9 +95,12 @@ function selectorUsesChangedSource(selector, changedNode) {
 }
 
 export function notifySelectorsForSourceChange(changedNode) {
-    for (const selector of graphNodes()) {
-        if (nodeTypeId(selector) === SELECTOR_NODE && selectorUsesChangedSource(selector, changedNode)) {
-            selector.__xhSelector?.refreshFromSource();
+    for (const consumer of graphNodes()) {
+        if (!selectorUsesChangedSource(consumer, changedNode)) continue;
+        if (nodeTypeId(consumer) === SELECTOR_NODE) {
+            consumer.__xhSelector?.refreshFromSource();
+        } else if (nodeTypeId(consumer) === CONFIG_EDITOR_NODE) {
+            consumer.__xhPromptConfigEditor?.refreshFromSource();
         }
     }
 }

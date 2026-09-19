@@ -13,6 +13,9 @@ analyzed_at: 2026-01-01T12:00:00+08:00
 declined_at: null
 remind_after: null
 analysis_scope: full-static
+validation_level: medium
+validation_model: exact-runtime-model-id
+validation_configured_at: 2026-01-01T12:00:00+08:00
 ---
 ```
 
@@ -23,6 +26,8 @@ Allowed `profile_status` values:
 - `declined`: the user declined the initial parse; no inventory is implied.
 
 Dates must be ISO-8601 with timezone. Use YAML `null`, not empty strings, for inapplicable values.
+
+`validation_level` must be `simple`, `medium`, or `careful`. `validation_model` is the exact model identifier exposed by the current product/runtime when the user chose the level; use `unknown` only when no trustworthy identifier exists. During initialization, explain all three levels and ask the user before setting them. See `validation-strategies.md`.
 
 ## Required sections for complete or partial profiles
 

@@ -25,6 +25,12 @@ The created file is copied from `assets/AGENTS.md`. Keep that template generic: 
 
 The canonical file is `COMFYUI_PLUGIN_PROJECT.md` at the plugin root.
 
+### Choose validation strategy
+
+During initial profile creation, ask the user to choose `simple`, `medium`, or `careful` using the descriptions in [validation-strategies.md](validation-strategies.md). Recommend `medium` if the user has no preference. This question may be combined with the parse-consent question to avoid an extra round trip.
+
+Record the selection, exact current model identifier, and current local timestamp in the profile frontmatter. If the model identifier is unavailable, record `unknown` and disclose that automatic model-mismatch detection will be unavailable until a known model updates the setting. A declined profile still records the validation configuration.
+
 ### Missing or invalid profile
 
 Do not begin a broad parse without notifying the user unless the current request explicitly asks for project parsing or profile creation.
@@ -59,6 +65,9 @@ analyzed_at: null
 declined_at: 2026-01-01T12:00:00+08:00
 remind_after: 2026-01-04T12:00:00+08:00
 analysis_scope: none
+validation_level: medium
+validation_model: exact-runtime-model-id
+validation_configured_at: 2026-01-01T12:00:00+08:00
 ---
 ```
 

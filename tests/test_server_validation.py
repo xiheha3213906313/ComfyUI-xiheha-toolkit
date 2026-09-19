@@ -1,0 +1,159 @@
+from __future__ import annotations
+
+import asyncio
+import importlib.util
+import json
+import sys
+import types
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+
+ROOT = Path(__file__).resolve().parents[1]
+PACKAGE_NAME = "_xiheha_toolkit_server_tests"
+
+
+class _Routes:
+    def __init__(self):
+        self.handlers = {}
+
+    def post(self, path):
+        def decorator(handler):
+            self.handlers[path] = handler
+            return handler
+
+        return decorator
+
+
+def _load_server_module():
+    package = types.ModuleType(PACKAGE_NAME)
+    package.__path__ = [str(ROOT)]
+    sys.modules[PACKAGE_NAME] = package
+
+    routes = _Routes()
+    fake_server = types.ModuleType("server")
+    fake_server.PromptServer = type("PromptServer", (), {"instance": type("Instance", (), {"routes": routes})()})
+    previous_server = sys.modules.get("server")
+    sys.modules["server"] = fake_server
+    try:
+        spec = importlib.util.spec_from_file_location(f"{PACKAGE_NAME}.server", ROOT / "server.py")
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = module
+        spec.loader.exec_module(module)
+    finally:
+        if previous_server is None:
+            sys.modules.pop("server", None)
+        else:
+            sys.modules["server"] = previous_server
+    return module, routes
+
+
+SERVER_MODULE, ROUTES = _load_server_module()
+
+
+class _Request:
+    def __init__(self, payload=None, error=None):
+        self.payload = payload
+        self.error = error
+
+    async def json(self):
+        if self.error:
+            raise self.error
+        return self.payload
+
+
+class ServerValidationTests(unittest.TestCase):
+    def test_valid_save_payload_is_normalized(self):
+        sources = SERVER_MODULE._validated_save_sources(
+            {
+                "sources": [
+                    {
+                        "source_name": "folder/model.safetensors",
+                        "folder_name": "checkpoints",
+                        "configs": [{"index": 1, "positive": "good", "negative": "bad"}],
+                    }
+                ]
+            }
+        )
+        self.assertEqual(sources[0]["configs"][0], {"index": 1, "positive": "good", "negative": "bad"})
+
+    def test_save_payload_rejects_boolean_index(self):
+        with self.assertRaisesRegex(ValueError, "正整数"):
+            SERVER_MODULE._validated_save_sources(
+                {
+                    "sources": [
+                        {
+                            "source_name": "model.safetensors",
+                            "folder_name": "loras",
+                            "configs": [{"index": True, "positive": "", "negative": ""}],
+                        }
+                    ]
+                }
+            )
+
+    def test_save_payload_rejects_oversized_prompt(self):
+        with self.assertRaisesRegex(ValueError, "100000"):
+            SERVER_MODULE._validated_save_sources(
+                {
+                    "sources": [
+                        {
+                            "source_name": "model.safetensors",
+                            "folder_name": "loras",
+                            "configs": [{"index": 1, "positive": "x" * 100_001, "negative": ""}],
+                        }
+                    ]
+                }
+            )
+
+    def test_route_registration_is_idempotent(self):
+        SERVER_MODULE.register_routes()
+        SERVER_MODULE.register_routes()
+        self.assertEqual(set(ROUTES.handlers), {"/xiheha_toolkit/inspect", "/xiheha_toolkit/save"})
+
+    def test_save_route_rejects_malformed_json(self):
+        SERVER_MODULE.register_routes()
+        response = asyncio.run(ROUTES.handlers["/xiheha_toolkit/save"](_Request(error=ValueError("bad"))))
+        self.assertEqual(response.status, 400)
+        self.assertEqual(json.loads(response.text)["error"], "请求必须是 JSON")
+
+    def test_save_route_returns_saved_inspections(self):
+        SERVER_MODULE.register_routes()
+        inspection = type("Inspection", (), {"to_dict": lambda self: {"source_name": "model.safetensors"}})()
+        payload = {
+            "sources": [
+                {
+                    "source_name": "model.safetensors",
+                    "folder_name": "loras",
+                    "configs": [{"index": 1, "positive": "good", "negative": "bad"}],
+                }
+            ]
+        }
+        with patch.object(SERVER_MODULE, "prepare_source_config_save", return_value=object()), patch.object(
+            SERVER_MODULE, "commit_source_config_save", return_value=inspection
+        ):
+            response = asyncio.run(ROUTES.handlers["/xiheha_toolkit/save"](_Request(payload=payload)))
+        self.assertEqual(response.status, 200)
+        self.assertEqual(json.loads(response.text)["sources"], [{"source_name": "model.safetensors"}])
+
+    def test_save_route_hides_filesystem_error_details(self):
+        SERVER_MODULE.register_routes()
+        payload = {
+            "sources": [
+                {
+                    "source_name": "model.safetensors",
+                    "folder_name": "loras",
+                    "configs": [{"index": 1, "positive": "", "negative": ""}],
+                }
+            ]
+        }
+        with patch.object(SERVER_MODULE, "prepare_source_config_save", return_value=object()), patch.object(
+            SERVER_MODULE, "commit_source_config_save", side_effect=OSError("C:/secret/path")
+        ):
+            response = asyncio.run(ROUTES.handlers["/xiheha_toolkit/save"](_Request(payload=payload)))
+        self.assertEqual(response.status, 500)
+        self.assertNotIn("secret", response.text)
+
+
+if __name__ == "__main__":
+    unittest.main()

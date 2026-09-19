@@ -16,6 +16,8 @@ Search before editing:
 
 Build a small impact list of files that must change and files that must remain unchanged.
 
+Before implementation, read the configured validation level. For `medium` or `careful`, make a compact risk-to-evidence plan with columns such as risk, evidence, and current executability. For `simple`, the model may keep this plan implicit unless a risk floor applies. Identify unavailable UI, GPU, external-plugin, or restart checks now rather than at delivery time.
+
 ## 2. Resolve consequential ambiguity
 
 Inspect first. Ask the user when source cannot decide an important product choice, especially:
@@ -39,7 +41,11 @@ Give the evidence and the two or three materially different outcomes. Do not mak
 
 Use a minimal patch. Preserve local style and public contracts not named by the request. Do not bulk-format, rename, upgrade dependencies, or clean unrelated files.
 
+After a multi-file or multi-hunk patch reports failure, inspect every target before retrying. Do not assume the operation was atomic: earlier hunks may already be present. Retry only the missing hunks so partially applied content is not duplicated or reverted.
+
 For changed behavior, add or update a regression test that would fail before the fix. Do not weaken assertions merely to accept the implementation.
+
+If the feature writes user-owned files, stop here and follow [file-writing.md](file-writing.md) before selecting a serialization or batch-save design.
 
 ## 4. Cross-layer completion check
 

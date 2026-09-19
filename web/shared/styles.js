@@ -26,4 +26,25 @@ export const TOOLKIT_STYLES = `
     .xh-display-row { padding: 4px 2px; }
     .xh-display-label { display: block; color: #aaa; font-size: 10px; margin-bottom: 2px; }
     .xh-display-text { box-sizing: border-box; display: block; width: 100%; max-width: 100%; min-width: 0; min-height: 92px; resize: vertical; color: inherit; background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 6px; font: 11px monospace; line-height: 1.4; }
+    .xh-editor-toolbar { display: flex; align-items: center; gap: 8px; padding: 4px 2px 8px; }
+    .xh-editor-model-picker { position: relative; flex: 0 1 auto; min-width: 0; max-width: calc(100% - 70px); }
+    .xh-editor-model-select { box-sizing: border-box; display: flex; align-items: center; width: 100%; min-width: 0; height: 26px; border: 1px solid rgba(255,255,255,.22); border-radius: 5px; padding: 0 7px; color: inherit; background: rgba(255,255,255,.08); font: 600 12px sans-serif; cursor: pointer; }
+    .xh-editor-model-select.open { position: relative; z-index: 3; border-radius: 5px 5px 0 0; }
+    .xh-editor-model-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .xh-editor-model-arrow { flex: 0 0 auto; width: 7px; height: 7px; margin: -3px 3px 0 10px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor; transform: rotate(45deg); }
+    .xh-editor-model-select.open .xh-editor-model-arrow { margin-top: 3px; transform: rotate(225deg); }
+    .xh-editor-model-menu { box-sizing: border-box; position: absolute; z-index: 2; top: calc(100% - 1px); left: 0; width: 100%; max-height: 190px; overflow-y: auto; border: 1px solid rgba(255,255,255,.22); border-top: 0; border-radius: 0 0 6px 6px; padding: 2px 0 3px; color: var(--fg-color, #ddd); color-scheme: dark; background: color-mix(in srgb, var(--component-node-background, #262729) 92%, white 8%); box-shadow: 0 6px 14px rgba(0,0,0,.38); scrollbar-color: rgba(255,255,255,.32) rgba(0,0,0,.16); }
+    .xh-editor-model-menu[hidden] { display: none; }
+    .xh-editor-model-option { box-sizing: border-box; display: block; width: 100%; border: 0; padding: 5px 7px; color: inherit; background: transparent; font: 12px sans-serif; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+    .xh-editor-model-option:hover, .xh-editor-model-option:focus { outline: 0; background: rgba(100,170,255,.28); }
+    .xh-editor-model-option[aria-selected="true"] { background: #3577a8; color: white; }
+    .xh-editor-save { flex: 0 0 auto; height: 26px; min-height: 26px; margin-left: auto; }
+    .xh-editor-save:disabled, .xh-editor-model-select:disabled { cursor: default; opacity: .5; }
+    .xh-editor-configs { padding: 4px 2px 8px; }
+    .xh-editor-config { position: relative; overflow: visible; }
+    .xh-editor-config.dirty::after { content: "*"; position: absolute; top: 0; right: 0; transform: translate(50%, -50%); z-index: 1; padding: 0 1px; color: #ffd166; background: var(--comfy-menu-bg, #353535); font-size: 12px; font-weight: 700; line-height: 1; pointer-events: none; }
+    .xh-editor-fields { display: grid; gap: 8px; padding: 0 2px 4px; }
+    .xh-editor-field { display: block; min-width: 0; }
+    .xh-editor-label { display: block; color: #aaa; font-size: 10px; margin-bottom: 3px; }
+    .xh-editor-text { box-sizing: border-box; display: block; width: 100%; max-width: 100%; min-width: 0; min-height: 96px; resize: vertical; color: inherit; background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 6px; font: 11px monospace; line-height: 1.4; }
 `;

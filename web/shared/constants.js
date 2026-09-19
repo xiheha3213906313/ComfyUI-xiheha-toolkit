@@ -9,6 +9,7 @@ export const SELECTOR_NODE = "XH_PromptSelector";
 export const PREVIEW_NODE = "XH_PromptPreview";
 export const MERGE_NODE = "XH_PromptMerger";
 export const DISPLAY_NODE = "XH_PromptDisplay";
+export const CONFIG_EDITOR_NODE = "XH_PromptConfigEditor";
 
 export const MODEL_LOADER_SOURCES = {
     CheckpointLoaderSimple: { widget: "ckpt_name", folder_name: "checkpoints" },
@@ -41,6 +42,10 @@ export const PORT_LABELS = {
     [DISPLAY_NODE]: {
         inputs: { positive_prompts: "正向提示词", negative_prompts: "负向提示词" },
         outputs: ["正向提示词", "负向提示词"],
+    },
+    [CONFIG_EDITOR_NODE]: {
+        inputs: { source: "模型列表" },
+        outputs: [],
     },
 };
 

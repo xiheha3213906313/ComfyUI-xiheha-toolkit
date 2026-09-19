@@ -67,14 +67,17 @@ export function configureScrollableWidget(node, root, scroll, { width, height })
     }
 }
 
-export function scrollWidgetOptions(node, minHeight = 180) {
+export function scrollWidgetOptions(node, minHeight = 180, reservedHeight = 75) {
+    const reserved = Math.max(0, Number(reservedHeight) || 0);
     return {
         serialize: false,
         hideOnZoom: false,
         getMinHeight: () => minHeight,
         // ComfyUI recalculates this value while the node is resized. The
         // DOM root is height:100%, so the scroll view follows the node body.
-        getMaxHeight: () => Math.max(minHeight, (Number(node.size?.[1]) || 300) - 75),
+        // Callers can reduce the legacy reservation when the current frontend
+        // already accounts for title and port space in the available height.
+        getMaxHeight: () => Math.max(minHeight, (Number(node.size?.[1]) || 300) - reserved),
     };
 }
 
