@@ -47,6 +47,18 @@ def _inside(path: Path, root: Path) -> bool:
         return False
 
 
+def infer_comfy_root(plugin_root: Path) -> Path | None:
+    plugin_root = plugin_root.resolve()
+    if plugin_root.parent.name.casefold() == "custom_nodes":
+        candidate = plugin_root.parent.parent
+        if (candidate / "folder_paths.py").is_file():
+            return candidate
+    for parent in plugin_root.parents:
+        if (parent / "folder_paths.py").is_file() and (parent / "custom_nodes").is_dir():
+            return parent
+    return None
+
+
 def _registration_summary(module: ModuleType) -> tuple[str, dict[str, object]]:
     mappings = getattr(module, "NODE_CLASS_MAPPINGS", None)
     node_list = getattr(module, "NODE_LIST", None)
@@ -69,17 +81,19 @@ def _registration_summary(module: ModuleType) -> tuple[str, dict[str, object]]:
     raise ValueError("no supported node registration surface found")
 
 
-def check(plugin_root: Path, comfy_root: Path) -> dict[str, object]:
+def check(plugin_root: Path, comfy_root: Path | None = None) -> dict[str, object]:
     plugin_root = plugin_root.resolve()
-    comfy_root = comfy_root.resolve()
+    comfy_root = comfy_root.resolve() if comfy_root else infer_comfy_root(plugin_root)
     result: dict[str, object] = {
         "mode": "controlled",
         "plugin_root": str(plugin_root),
-        "comfy_root": str(comfy_root),
+        "comfy_root": str(comfy_root) if comfy_root else None,
         "real_comfyui_startup": False,
     }
     if not (plugin_root / "__init__.py").is_file():
         return {**result, "status": "error", "error": "plugin root has no __init__.py"}
+    if comfy_root is None:
+        return {**result, "status": "error", "error": "ComfyUI root could not be resolved; pass --comfy-root"}
     if not (comfy_root / "folder_paths.py").is_file():
         return {**result, "status": "error", "error": "selected ComfyUI root has no folder_paths.py"}
 
@@ -171,8 +185,15 @@ def check(plugin_root: Path, comfy_root: Path) -> dict[str, object]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--plugin-root", type=Path, required=True)
-    parser.add_argument("--comfy-root", type=Path, required=True)
+    parser.add_argument(
+        "--root",
+        "--plugin-root",
+        dest="plugin_root",
+        type=Path,
+        default=Path.cwd(),
+        help="Plugin root; --plugin-root remains a compatibility alias",
+    )
+    parser.add_argument("--comfy-root", type=Path, help="ComfyUI root; inferred from a standard custom_nodes layout")
     args = parser.parse_args()
     result = check(args.plugin_root, args.comfy_root)
     print(json.dumps(result, ensure_ascii=False, indent=2))

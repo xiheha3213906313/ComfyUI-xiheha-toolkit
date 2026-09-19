@@ -14,6 +14,8 @@ Follow the plugin's existing frontend architecture and the installed ComfyUI fro
 - Traverse graph links defensively: missing links, deleted nodes, cycles, and optional upstream plugins are normal conditions.
 - Preserve external node IDs, input names, widget names, and slot semantics verbatim; they are owned by the other plugin.
 - Clean up DOM elements, listeners, observers, and timers on node removal when the current architecture requires it.
+- For a DOM popover that must close on clicks over the LiteGraph canvas, first test normal focus/bubble behavior. If Canvas interception prevents bubbling, listen for `pointerdown` on `document` in the capture phase, reject events contained by the trigger/popover, and remove the same handler with the same capture option on close, redraw/rebuild, and node removal.
+- Treat Canvas node sizing as a lifecycle contract across `computeSize`, creation, workflow configuration, and manual resize. A long rendered title may inflate LiteGraph's native minimum width even when the body is empty; read [frontend-visual-debugging.md](frontend-visual-debugging.md) before overriding that behavior.
 
 Move meaningful non-DOM state transitions into pure functions when practical, especially persisted-state parsing, dirty/clean comparison, model/config switching, index allocation, save-payload construction, partial-success reconciliation, and stale-response rejection. Test those functions with the project's JavaScript test tooling; when no tooling exists, a small dependency-free Node test is preferable to leaving all state logic for manual UI testing.
 

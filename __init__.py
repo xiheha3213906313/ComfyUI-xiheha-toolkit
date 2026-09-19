@@ -9,7 +9,7 @@ from .nodes.prompt_display import PromptDisplay
 from .nodes.prompt_config_editor import PromptConfigEditor
 from .server import register_routes
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"
 
 NODE_CLASS_MAPPINGS = {
     "XH_StackSource": StackSource,

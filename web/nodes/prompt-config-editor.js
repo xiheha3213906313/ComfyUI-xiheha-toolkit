@@ -43,7 +43,17 @@ function cleanState(value) {
             for (const [key, sourceDrafts] of Object.entries(parsed.drafts)) {
                 if (!sourceDrafts || typeof sourceDrafts !== "object" || Array.isArray(sourceDrafts)) continue;
                 const cleaned = {};
+                if (Array.isArray(sourceDrafts.configs)) {
+                    cleaned.configs = sourceDrafts.configs
+                        .filter((item) => item && typeof item === "object")
+                        .map((item, idx) => ({
+                            index: idx + 1,
+                            positive: typeof item.positive === "string" ? item.positive : "",
+                            negative: typeof item.negative === "string" ? item.negative : "",
+                        }));
+                }
                 for (const [configKey, draft] of Object.entries(sourceDrafts)) {
+                    if (configKey === "configs") continue;
                     if (configKey !== NEW_CONFIG && !/^\d+$/.test(configKey)) continue;
                     if (!draft || typeof draft !== "object" || Array.isArray(draft)) continue;
                     cleaned[configKey] = {
@@ -95,6 +105,14 @@ function editorController(node) {
         saving: false,
         configButtons: new Map(),
         saveButton: null,
+        deleteButton: null,
+        currentDialog: null,
+        cleanupModelMenu: null,
+        cleanup() {
+            this.closeDialog();
+            this.cleanupModelMenu?.();
+            this.cleanupModelMenu = null;
+        },
         saveState() {
             const widget = widgetByName(node, "editor_state");
             if (widget) {
@@ -107,6 +125,102 @@ function editorController(node) {
         currentInfo() {
             return this.infos.find((info) => sourceKey(info) === this.state.selectedSource) || null;
         },
+        currentConfigs(info) {
+            const key = sourceKey(info);
+            if (this.state.drafts[key]?.configs) {
+                return this.state.drafts[key].configs;
+            }
+            return info?.configs || [];
+        },
+        canDelete(info) {
+            if (!info || info.error || this.saving) return false;
+            const selected = this.selectedConfigKey(info);
+            const key = sourceKey(info);
+            if (selected === NEW_CONFIG) {
+                const newDraft = this.state.drafts[key]?.[NEW_CONFIG];
+                return Boolean(newDraft && (newDraft.positive || newDraft.negative));
+            }
+            const configs = this.currentConfigs(info);
+            return configs.some((c) => String(Number(c.index)) === selected);
+        },
+        showConfirmDialog({ title = "提示", message, onConfirm }) {
+            this.closeDialog();
+            const overlay = document.createElement("div");
+            overlay.className = "xh-dialog-overlay";
+            overlay.onclick = (e) => {
+                if (e.target === overlay) this.closeDialog();
+            };
+            overlay.onkeydown = (e) => {
+                if (e.key === "Escape") {
+                    e.stopPropagation();
+                    this.closeDialog();
+                }
+            };
+            const dialog = document.createElement("div");
+            dialog.className = "xh-dialog";
+            const titleEl = document.createElement("div");
+            titleEl.className = "xh-dialog-title";
+            titleEl.textContent = title;
+            const msgEl = document.createElement("div");
+            msgEl.className = "xh-dialog-message";
+            msgEl.textContent = message;
+            const actions = document.createElement("div");
+            actions.className = "xh-dialog-actions";
+
+            const cancelBtn = document.createElement("button");
+            cancelBtn.type = "button";
+            cancelBtn.className = "xh-button xh-dialog-btn";
+            cancelBtn.textContent = "取消";
+            cancelBtn.onclick = () => this.closeDialog();
+
+            const confirmBtn = document.createElement("button");
+            confirmBtn.type = "button";
+            confirmBtn.className = "xh-button xh-dialog-btn xh-dialog-btn-danger";
+            confirmBtn.textContent = "确定";
+            confirmBtn.onclick = () => {
+                this.closeDialog();
+                onConfirm?.();
+            };
+
+            actions.append(cancelBtn, confirmBtn);
+            dialog.append(titleEl, msgEl, actions);
+            overlay.appendChild(dialog);
+            root.appendChild(overlay);
+            this.currentDialog = overlay;
+            confirmBtn.focus();
+        },
+        closeDialog() {
+            if (this.currentDialog) {
+                this.currentDialog.remove();
+                this.currentDialog = null;
+            }
+        },
+        async deleteSelectedConfig(info, selected) {
+            const key = sourceKey(info);
+            const configs = this.currentConfigs(info);
+            const remaining = configs
+                .filter((c) => String(Number(c.index)) !== String(Number(selected)))
+                .map((c, i) => ({
+                    index: i + 1,
+                    positive: this.effectiveValue(info, String(Number(c.index))).positive,
+                    negative: this.effectiveValue(info, String(Number(c.index))).negative,
+                }));
+            this.state.drafts[key] ||= {};
+            this.state.drafts[key].configs = remaining;
+            for (const k of Object.keys(this.state.drafts[key])) {
+                if (k !== "configs" && k !== NEW_CONFIG) {
+                    delete this.state.drafts[key][k];
+                }
+            }
+            if (remaining.length > 0) {
+                const targetIdx = Math.min(Number(selected), remaining.length);
+                this.state.selections[key] = String(targetIdx);
+            } else {
+                this.state.selections[key] = NEW_CONFIG;
+            }
+            this.saveState();
+            await this.saveAll();
+        },
         ensureSelections() {
             const available = new Set(this.infos.map(sourceKey));
             if (!this.state.selectedSource || !available.has(this.state.selectedSource)) {
@@ -114,10 +228,11 @@ function editorController(node) {
             }
             for (const info of this.infos) {
                 const key = sourceKey(info);
-                const indexes = configIndexSet(info);
+                const configs = this.currentConfigs(info);
+                const indexes = new Set(configs.map((c) => String(Number(c.index))));
                 const selected = String(this.state.selections[key] ?? "");
                 if (selected === NEW_CONFIG || indexes.has(selected)) continue;
-                this.state.selections[key] = info.configs?.length ? String(Number(info.configs[0].index)) : NEW_CONFIG;
+                this.state.selections[key] = configs.length ? String(Number(configs[0].index)) : NEW_CONFIG;
             }
         },
         selectedConfigKey(info) {
@@ -125,7 +240,8 @@ function editorController(node) {
         },
         baseline(info, configKey) {
             if (configKey === NEW_CONFIG) return { positive: "", negative: "" };
-            const config = info.configs?.find((item) => Number(item.index) === Number(configKey));
+            const configs = this.currentConfigs(info);
+            const config = configs.find((item) => Number(item.index) === Number(configKey));
             return configValue(config);
         },
         effectiveValue(info, configKey) {
@@ -146,6 +262,7 @@ function editorController(node) {
             }
             this.configButtons.get(configKey)?.classList.toggle("dirty", dirty);
             if (this.saveButton) this.saveButton.disabled = this.saving || !this.hasLoadedDrafts();
+            if (this.deleteButton) this.deleteButton.disabled = !this.canDelete(info);
             this.saveState();
         },
         hasLoadedDrafts() {
@@ -158,12 +275,13 @@ function editorController(node) {
                 const key = sourceKey(info);
                 const drafts = this.state.drafts[key];
                 if (!drafts || !Object.keys(drafts).length || info.error) continue;
-                const configs = (info.configs || []).map((config) => ({
+                const baseConfigs = drafts.configs || (info.configs || []);
+                const configs = baseConfigs.map((config) => ({
                     index: Number(config.index),
                     ...configValue(config),
                 }));
                 for (const [configKey, draft] of Object.entries(drafts)) {
-                    if (configKey === NEW_CONFIG) continue;
+                    if (configKey === NEW_CONFIG || configKey === "configs") continue;
                     const existing = configs.find((config) => config.index === Number(configKey));
                     if (existing) Object.assign(existing, configValue(draft));
                 }
@@ -213,6 +331,7 @@ function editorController(node) {
             }
         },
         render() {
+            this.cleanup();
             scroll.textContent = "";
             this.configButtons.clear();
 
@@ -247,12 +366,8 @@ function editorController(node) {
                 option.setAttribute("aria-selected", String(optionKey === this.state.selectedSource));
                 option.textContent = info.display_name || info.source_name;
                 option.onclick = () => {
-                    if (optionKey === this.state.selectedSource) {
-                        modelMenu.hidden = true;
-                        modelSelect.classList.remove("open");
-                        modelSelect.setAttribute("aria-expanded", "false");
-                        return;
-                    }
+                    setModelMenuOpen(false);
+                    if (optionKey === this.state.selectedSource) return;
                     this.state.selectedSource = optionKey;
                     this.saveState();
                     this.render();
@@ -260,11 +375,36 @@ function editorController(node) {
                 modelMenu.appendChild(option);
             }
             modelSelect.disabled = !this.infos.length || this.saving;
+            const onOutsidePointer = (event) => {
+                if (!event.target || !(event.target instanceof Node) || !modelPicker.contains(event.target)) {
+                    setModelMenuOpen(false);
+                }
+            };
+            const onOutsideKey = (event) => {
+                if (event.key === "Escape") {
+                    event.preventDefault();
+                    setModelMenuOpen(false);
+                    modelSelect.focus();
+                }
+            };
             const setModelMenuOpen = (open) => {
                 if (modelSelect.disabled) return;
-                modelMenu.hidden = !open;
-                modelSelect.classList.toggle("open", open);
-                modelSelect.setAttribute("aria-expanded", String(open));
+                const nextState = Boolean(open);
+                if (modelMenu.hidden === !nextState) return;
+                modelMenu.hidden = !nextState;
+                modelSelect.classList.toggle("open", nextState);
+                modelSelect.setAttribute("aria-expanded", String(nextState));
+                if (nextState) {
+                    document.addEventListener("pointerdown", onOutsidePointer, true);
+                    document.addEventListener("keydown", onOutsideKey, true);
+                    this.cleanupModelMenu = () => {
+                        document.removeEventListener("pointerdown", onOutsidePointer, true);
+                        document.removeEventListener("keydown", onOutsideKey, true);
+                    };
+                } else {
+                    this.cleanupModelMenu?.();
+                    this.cleanupModelMenu = null;
+                }
             };
             modelSelect.onclick = () => setModelMenuOpen(modelMenu.hidden);
             modelSelect.onkeydown = (event) => {
@@ -298,6 +438,41 @@ function editorController(node) {
                 if (!modelPicker.contains(event.relatedTarget)) setModelMenuOpen(false);
             };
             modelPicker.append(modelSelect, modelMenu);
+
+            const deleteButton = document.createElement("button");
+            deleteButton.type = "button";
+            deleteButton.className = "xh-button xh-editor-delete";
+            deleteButton.textContent = "删除";
+            deleteButton.disabled = !this.canDelete(selectedInfo);
+            deleteButton.onclick = () => {
+                if (!this.canDelete(selectedInfo)) return;
+                const selected = this.selectedConfigKey(selectedInfo);
+                if (selected === NEW_CONFIG) {
+                    this.showConfirmDialog({
+                        title: "确认清空",
+                        message: "确定要清空正在添加的提示词草稿吗？",
+                        onConfirm: () => {
+                            const key = sourceKey(selectedInfo);
+                            if (this.state.drafts[key]) {
+                                delete this.state.drafts[key][NEW_CONFIG];
+                                if (!Object.keys(this.state.drafts[key]).length) delete this.state.drafts[key];
+                            }
+                            this.saveState();
+                            this.render();
+                        },
+                    });
+                } else {
+                    this.showConfirmDialog({
+                        title: "确认删除",
+                        message: `确定要删除「配置${selected}」吗？`,
+                        onConfirm: () => {
+                            this.deleteSelectedConfig(selectedInfo, selected);
+                        },
+                    });
+                }
+            };
+            this.deleteButton = deleteButton;
+
             const saveButton = document.createElement("button");
             saveButton.type = "button";
             saveButton.className = "xh-button xh-editor-save";
@@ -305,7 +480,7 @@ function editorController(node) {
             saveButton.disabled = this.saving || !this.hasLoadedDrafts();
             saveButton.onclick = () => this.saveAll();
             this.saveButton = saveButton;
-            toolbar.append(modelPicker, saveButton);
+            toolbar.append(modelPicker, deleteButton, saveButton);
             scroll.appendChild(toolbar);
 
             if (this.error) {
@@ -334,7 +509,8 @@ function editorController(node) {
             const selected = this.selectedConfigKey(info);
             const configs = document.createElement("div");
             configs.className = "xh-buttons xh-editor-configs";
-            const options = (info.configs || []).map((config) => ({
+            const currentConfigs = this.currentConfigs(info);
+            const options = currentConfigs.map((config) => ({
                 key: String(Number(config.index)),
                 label: `配置${Number(config.index)}`,
             }));
@@ -436,5 +612,10 @@ export function patch(nodeType) {
         const result = originalConnections?.apply(this, arguments);
         setTimeout(() => this.__xhPromptConfigEditor?.refreshFromSource(), 0);
         return result;
+    };
+    const originalRemoved = nodeType.prototype.onRemoved;
+    nodeType.prototype.onRemoved = function () {
+        this.__xhPromptConfigEditor?.cleanup?.();
+        return originalRemoved?.apply(this, arguments);
     };
 }

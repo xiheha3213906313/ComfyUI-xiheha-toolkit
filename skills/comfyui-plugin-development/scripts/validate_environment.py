@@ -75,7 +75,7 @@ def inspect(plugin_root: Path, comfy_root: Path | None = None) -> dict[str, obje
         "unittest": f'"{python}" -m unittest discover -s tests',
         "controlled_import": (
             f'"{python}" <skill-dir>/scripts/check_plugin_import.py '
-            f'--plugin-root "{plugin_root}" --comfy-root "{comfy_root}"'
+            f'--root "{plugin_root}" --comfy-root "{comfy_root}"'
         ),
     }
     result["status"] = "ready" if not errors else "error"
@@ -86,8 +86,15 @@ def inspect(plugin_root: Path, comfy_root: Path | None = None) -> dict[str, obje
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--plugin-root", type=Path, default=Path.cwd())
-    parser.add_argument("--comfy-root", type=Path)
+    parser.add_argument(
+        "--root",
+        "--plugin-root",
+        dest="plugin_root",
+        type=Path,
+        default=Path.cwd(),
+        help="Plugin root; --plugin-root remains a compatibility alias",
+    )
+    parser.add_argument("--comfy-root", type=Path, help="ComfyUI root; inferred from a standard custom_nodes layout")
     args = parser.parse_args()
     result = inspect(args.plugin_root, args.comfy_root)
     print(json.dumps(result, ensure_ascii=False, indent=2))

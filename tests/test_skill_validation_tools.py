@@ -59,15 +59,17 @@ class SkillValidationToolTests(unittest.TestCase):
     def test_environment_preflight_resolves_fake_comfy_root(self):
         with tempfile.TemporaryDirectory() as temp:
             comfy, plugin = self._make_tree(Path(temp))
-            result = ENVIRONMENT.inspect(plugin, comfy)
+            result = ENVIRONMENT.inspect(plugin)
         self.assertEqual(result["status"], "ready")
+        self.assertEqual(Path(result["comfy_root"]), comfy)
         self.assertTrue(str(result["folder_paths"]).endswith("folder_paths.py"))
 
     def test_controlled_import_handles_hyphen_and_idempotent_route(self):
         with tempfile.TemporaryDirectory() as temp:
             comfy, plugin = self._make_tree(Path(temp))
-            result = IMPORT_CHECK.check(plugin, comfy)
+            result = IMPORT_CHECK.check(plugin)
         self.assertEqual(result["status"], "passed")
+        self.assertEqual(Path(result["comfy_root"]), comfy)
         self.assertEqual(result["registration_style"], "classic")
         self.assertEqual(result["registration"]["node_ids"], ["Demo"])
         self.assertEqual(result["routes"][0]["path"], "/demo")
@@ -88,6 +90,15 @@ class SkillValidationToolTests(unittest.TestCase):
             result = IMPORT_CHECK.check(plugin, comfy)
         self.assertEqual(result["status"], "error")
         self.assertIn("duplicate routes", result["error"])
+
+    def test_controlled_import_reports_unresolved_comfy_root(self):
+        with tempfile.TemporaryDirectory() as temp:
+            plugin = Path(temp) / "standalone-plugin"
+            plugin.mkdir()
+            (plugin / "__init__.py").write_text("NODE_CLASS_MAPPINGS = {}\n", encoding="utf-8")
+            result = IMPORT_CHECK.check(plugin)
+        self.assertEqual(result["status"], "error")
+        self.assertIn("--comfy-root", result["error"])
 
 
 if __name__ == "__main__":

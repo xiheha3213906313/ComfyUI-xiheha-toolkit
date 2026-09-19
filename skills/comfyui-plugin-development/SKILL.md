@@ -9,10 +9,10 @@ Use this skill for ComfyUI custom-node repositories. Keep project facts outside 
 
 ## Start with the project profile
 
-1. Find the plugin root. Obtain the exact current model identifier from product/runtime metadata when it is exposed; never infer it from capability. Then run:
+1. Find the plugin root. The agent must obtain the current model label or identifier from host UI, product/runtime metadata, system context, or an explicit user statement and pass it to the checker itself; the shell script cannot inspect the conversation runtime and no terminal environment variable is required. Preserve the host-provided value exactly and never infer identity from capability. Then run:
 
    ```text
-   python <skill-dir>/scripts/check_project_profile.py --root <plugin-root> --model <exact-model-id>
+   python <skill-dir>/scripts/check_project_profile.py --root <plugin-root> --model <host-model-label-or-id>
    ```
 
    Omit `--model` when no trustworthy identifier is available.
@@ -22,14 +22,14 @@ Use this skill for ComfyUI custom-node repositories. Keep project facts outside 
 4. If the result is `missing`, `declined`, `reminder_due`, or `invalid`, read [references/project-profile-bootstrap.md](references/project-profile-bootstrap.md) and follow it exactly before editing. This is the only branch that loads the bootstrap procedure, including safe creation of a minimal root `AGENTS.md` when no project instruction file exists.
 5. If the profile contradicts source, source wins for the current change. Correct the profile in the same task when the discrepancy is structural rather than transient.
 
-When the checker result includes a `validation` object, read it before work. A missing/invalid profile has no usable validation object, so the bootstrap procedure collects the choice instead:
+This gate applies to every project modification, including a small edit to an existing node; it is not limited to creating nodes. Before any mutation, read the returned `validation` object. A missing/invalid profile has no usable validation object, so the bootstrap procedure collects the choice instead:
 
 - `missing`: ask the user to choose `simple`, `medium`, or `careful`, then persist the answer and current model with `scripts/set_validation_strategy.py`.
-- `configured` with `model_match: false`: state the configured model and validation level, then ask whether to keep that level or change it for the current model. Wait for the answer and persist the chosen level with the current model so the question does not repeat.
-- `configured` with `model_match: true`: on the first project-related turn of a new conversation, briefly remind the user of the active validation level and continue without pausing.
-- `configured` with `model_match: null`: state the active level only on a new conversation and continue; do not invent a model mismatch.
+- `configured` with `model_match: false`: state the configured/current models and validation level, ask the user to choose `simple`, `medium`, or `careful`, and stop until the answer arrives. Persist the answer with the current model before editing.
+- `configured` with `model_match: true`: on the first project-related turn of a genuinely new conversation, briefly remind the user of the active validation level and continue without pausing. Later tasks in the same conversation continue silently.
+- `configured` with `model_match: null`: the model cannot be verified and must not be treated as a match. At the start of a new project task, state the configured model/level, ask which level to use, and stop until the answer arrives. Do not persist a guessed model identifier.
 
-A new conversation means no earlier visible turn has discussed or modified this project. Do not repeat the reminder within an ongoing conversation. Read [references/validation-strategies.md](references/validation-strategies.md) for selection, persistence, overrides, and risk floors.
+A new conversation means no earlier visible turn has discussed or modified this project. A new project task is a distinct requested outcome, not every follow-up message within the same ongoing change. Run the gate once at task start; do not re-run it silently for each message. If the model was unverifiable and the user confirms a level, do not repeat the question within that task. Read [references/validation-strategies.md](references/validation-strategies.md) for selection, persistence, overrides, and risk floors.
 
 Do not silently substitute README files, `AGENTS.md`, memory, or guesses for the canonical profile. Read repository instruction files as well; they can add project-specific constraints.
 
@@ -51,6 +51,8 @@ Load only the references that match the task, except that validation is always r
 - Make the smallest coherent change. Preserve unrelated working-tree changes and untracked files.
 - Do not invent compatibility behavior, silently migrate workflow schemas, reorder ports, change public node IDs, add dependencies, alter model/device/dtype/offload behavior, or choose among materially different user-visible behaviors without authority.
 - When a consequential ambiguity remains after inspection, stop and ask one focused question. State what the code proves, what remains undecidable, and which outcomes differ.
+- For any blocking user decision, prefer the coding host's native structured question/choice UI when it is available in the current mode. Otherwise ask one concise plain-text question. Do not misuse a normal question UI for permission flows that have a dedicated approval mechanism.
+- After dispatching a blocking question, perform no commands, edits, or additional reasoning-dependent work while it is pending. A native question tool may continue only after it returns the user's answer; a plain-text question must be the final content of the turn. Never continue on an assumed answer.
 - Do not ask about facts that repository inspection can answer.
 - Never claim a test, ComfyUI startup, browser interaction, GPU path, or workflow check was performed unless it actually was.
 

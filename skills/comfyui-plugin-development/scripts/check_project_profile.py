@@ -75,6 +75,7 @@ def _validation_config(fields: dict[str, str | None], current_model: str | None)
         "configured_at": configured_at.isoformat(),
         "current_model": normalized_current or None,
         "model_match": model_match,
+        "model_confirmation_required": not bool(normalized_current),
     }
 
 
@@ -123,7 +124,7 @@ def inspect(root: Path, now: datetime, current_model: str | None = None) -> dict
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd(), help="ComfyUI plugin root")
-    parser.add_argument("--model", help="Exact current model identifier from product/runtime metadata")
+    parser.add_argument("--model", help="Exact current model label or identifier exposed by the host/runtime")
     parser.add_argument(
         "--now",
         type=_parse_moment,

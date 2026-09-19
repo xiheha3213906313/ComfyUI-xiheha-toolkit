@@ -74,8 +74,15 @@ validation_configured_at: 2026-09-19T12:00:00+08:00
                 datetime(2026, 9, 19, 12, tzinfo=self.TZ),
                 "other-model",
             )
+            unknown_current = PROFILE_CHECKER.inspect(
+                root,
+                datetime(2026, 9, 19, 12, tzinfo=self.TZ),
+            )
         self.assertIs(matched["validation"]["model_match"], True)
+        self.assertIs(matched["validation"]["model_confirmation_required"], False)
         self.assertIs(mismatched["validation"]["model_match"], False)
+        self.assertIs(unknown_current["validation"]["model_match"], None)
+        self.assertIs(unknown_current["validation"]["model_confirmation_required"], True)
 
     def test_declined_profile_waits_until_reminder_date(self):
         with tempfile.TemporaryDirectory() as temp:

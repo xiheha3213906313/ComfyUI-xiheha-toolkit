@@ -109,7 +109,7 @@ def main() -> int:
     parser.add_argument("--level", choices=LEVELS, required=True)
     parser.add_argument(
         "--model",
-        help="Exact current model identifier, or 'unknown'; omit to preserve the configured model",
+        help="Exact current host model label/identifier, or 'unknown'; omit to preserve the configured model",
     )
     parser.add_argument(
         "--configured-at",

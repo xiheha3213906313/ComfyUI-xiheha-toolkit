@@ -44,3 +44,18 @@ When diagnosing whitespace or clipping:
 6. Verify minimum size and manual resize states, including scroll behavior.
 
 Do not repeatedly reduce the default node height to compensate for a widget-height calculation error. Fix the layer that owns the incorrect reservation.
+
+## Canvas node width and long titles
+
+LiteGraph may include the measured Canvas title width in `computeSize()`, then use that result as the hard minimum during drag resize. A long localized title can therefore prevent shrinking even when ports, widgets, and content need much less width. Applying `Math.max(desiredMinimum, originalSize[0])` does not remove this constraint because the original result is already title-inflated.
+
+Before changing sizing, determine which term sets the minimum: title text, input/output labels, widgets, or custom drawing. If the product intentionally allows a node narrower than its title, decouple only the title contribution while retaining real port/widget constraints. Reasonable implementations include independently measuring the required content width or invoking the original calculation with the title temporarily excluded and restored in `finally`. Preserve the original method and instance state; verify that title drawing, clipping, selection, serialization, and exceptions do not leave a modified title behind.
+
+Audit the complete size lifecycle:
+
+- `computeSize(out)` defines the genuine minimum used by resize clamping;
+- creation establishes the intended default size without replacing the minimum;
+- workflow configuration handles serialized historical sizes while preserving deliberate user sizing—migrate only a known obsolete forced size or a value that violates the new contract;
+- resize composes with the original handler and clamps only the dimensions the feature owns.
+
+Test a long title, representative port labels, a newly created node, a loaded old workflow, minimum drag resize, and manual expansion. Do not globally suppress title measurement or silently shrink every saved workflow merely to fix one node.

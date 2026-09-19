@@ -21,8 +21,10 @@ When paths or imports are uncertain, run:
 
 ```text
 python <skill-dir>/scripts/validate_environment.py \
-  --plugin-root <plugin-root> --comfy-root <comfy-root>
+  --root <plugin-root> [--comfy-root <comfy-root>]
 ```
+
+For a standard `<ComfyUI>/custom_nodes/<plugin>` layout, omit `--comfy-root`; the helper resolves it upward. Pass it only for a nonstandard layout or to override detection. `--plugin-root` remains a compatibility alias for `--root`.
 
 Verify:
 
@@ -66,7 +68,7 @@ For a controlled import, use:
 
 ```text
 python <skill-dir>/scripts/check_plugin_import.py \
-  --plugin-root <plugin-root> --comfy-root <comfy-root>
+  --root <plugin-root> [--comfy-root <comfy-root>]
 ```
 
 It verifies mappings, display mappings, `WEB_DIRECTORY`, route registration, and repeated import behavior with a controlled `PromptServer.instance`. Label it **controlled import**, never real ComfyUI startup.

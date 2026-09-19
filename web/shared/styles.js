@@ -1,7 +1,7 @@
 // Single source of truth for the runtime-injected stylesheet.
 // toolkit.css at the web root is kept as the readable, non-injected reference.
 export const TOOLKIT_STYLES = `
-    .xh-root { box-sizing: border-box; width: 100%; max-width: 100%; min-width: 0; overflow: hidden; color: var(--fg-color, #ddd); font: 12px sans-serif; }
+    .xh-root { box-sizing: border-box; position: relative; width: 100%; max-width: 100%; min-width: 0; overflow: hidden; color: var(--fg-color, #ddd); font: 12px sans-serif; }
     .xh-scroll { box-sizing: border-box; width: 100%; max-width: 100%; height: 100%; min-height: 0; max-height: 100%; overflow-y: auto; overflow-x: hidden; padding: 4px; }
     .xh-row, .xh-preview-row, .xh-merge-row { box-sizing: border-box; min-width: 0; max-width: 100%; }
     .xh-row { border-bottom: 1px solid rgba(255,255,255,.12); padding: 5px 2px 6px; }
@@ -26,8 +26,8 @@ export const TOOLKIT_STYLES = `
     .xh-display-row { padding: 4px 2px; }
     .xh-display-label { display: block; color: #aaa; font-size: 10px; margin-bottom: 2px; }
     .xh-display-text { box-sizing: border-box; display: block; width: 100%; max-width: 100%; min-width: 0; min-height: 92px; resize: vertical; color: inherit; background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 6px; font: 11px monospace; line-height: 1.4; }
-    .xh-editor-toolbar { display: flex; align-items: center; gap: 8px; padding: 4px 2px 8px; }
-    .xh-editor-model-picker { position: relative; flex: 0 1 auto; min-width: 0; max-width: calc(100% - 70px); }
+    .xh-editor-toolbar { display: flex; align-items: center; gap: 6px; padding: 4px 2px 8px; }
+    .xh-editor-model-picker { position: relative; flex: 1 1 auto; min-width: 0; }
     .xh-editor-model-select { box-sizing: border-box; display: flex; align-items: center; width: 100%; min-width: 0; height: 26px; border: 1px solid rgba(255,255,255,.22); border-radius: 5px; padding: 0 7px; color: inherit; background: rgba(255,255,255,.08); font: 600 12px sans-serif; cursor: pointer; }
     .xh-editor-model-select.open { position: relative; z-index: 3; border-radius: 5px 5px 0 0; }
     .xh-editor-model-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -38,13 +38,23 @@ export const TOOLKIT_STYLES = `
     .xh-editor-model-option { box-sizing: border-box; display: block; width: 100%; border: 0; padding: 5px 7px; color: inherit; background: transparent; font: 12px sans-serif; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
     .xh-editor-model-option:hover, .xh-editor-model-option:focus { outline: 0; background: rgba(100,170,255,.28); }
     .xh-editor-model-option[aria-selected="true"] { background: #3577a8; color: white; }
-    .xh-editor-save { flex: 0 0 auto; height: 26px; min-height: 26px; margin-left: auto; }
-    .xh-editor-save:disabled, .xh-editor-model-select:disabled { cursor: default; opacity: .5; }
+    .xh-editor-delete { flex: 0 0 auto; height: 26px; min-height: 26px; }
+    .xh-editor-delete:hover:not(:disabled) { background: rgba(230, 60, 60, .25); border-color: rgba(255, 100, 100, .45); color: #ff9b9b; }
+    .xh-editor-save { flex: 0 0 auto; height: 26px; min-height: 26px; }
+    .xh-editor-save:disabled, .xh-editor-delete:disabled, .xh-editor-model-select:disabled { cursor: default; opacity: .5; }
     .xh-editor-configs { padding: 4px 2px 8px; }
     .xh-editor-config { position: relative; overflow: visible; }
-    .xh-editor-config.dirty::after { content: "*"; position: absolute; top: 0; right: 0; transform: translate(50%, -50%); z-index: 1; padding: 0 1px; color: #ffd166; background: var(--comfy-menu-bg, #353535); font-size: 12px; font-weight: 700; line-height: 1; pointer-events: none; }
+    .xh-editor-config.dirty::after { content: "*"; position: absolute; top: 0; right: 0; transform: translate(50%, -50%); z-index: 1; padding: 0 1px; color: #ffd166; background: transparent; font-size: 12px; font-weight: 700; line-height: 1; pointer-events: none; }
     .xh-editor-fields { display: grid; gap: 8px; padding: 0 2px 4px; }
     .xh-editor-field { display: block; min-width: 0; }
     .xh-editor-label { display: block; color: #aaa; font-size: 10px; margin-bottom: 3px; }
     .xh-editor-text { box-sizing: border-box; display: block; width: 100%; max-width: 100%; min-width: 0; min-height: 96px; resize: vertical; color: inherit; background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 6px; font: 11px monospace; line-height: 1.4; }
+    .xh-dialog-overlay { box-sizing: border-box; position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 100; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .65); backdrop-filter: blur(1px); padding: 16px; border-radius: inherit; }
+    .xh-dialog { box-sizing: border-box; width: 100%; max-width: 280px; padding: 16px; border: 1px solid rgba(255, 255, 255, .25); border-radius: 8px; background: color-mix(in srgb, var(--component-node-background, #262729) 94%, white 6%); box-shadow: 0 8px 24px rgba(0, 0, 0, .55); text-align: center; }
+    .xh-dialog-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; color: #fff; }
+    .xh-dialog-message { font-size: 12px; color: var(--fg-color, #ddd); line-height: 1.4; margin-bottom: 16px; word-break: break-word; }
+    .xh-dialog-actions { display: flex; justify-content: center; gap: 10px; }
+    .xh-dialog-btn { height: 26px; min-height: 26px; padding: 0 14px; font-size: 12px; }
+    .xh-dialog-btn-danger { background: rgba(220, 50, 50, .35); border-color: rgba(255, 100, 100, .55); color: #ff9b9b; font-weight: 600; }
+    .xh-dialog-btn-danger:hover { background: rgba(220, 50, 50, .6); border-color: #ff6b6b; color: #fff; }
 `;

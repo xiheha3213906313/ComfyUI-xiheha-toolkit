@@ -11,7 +11,7 @@ except ImportError:  # Allows the test suite to import this module standalone.
 class StackSource:
     """Pass through an upstream easy-use stack and expose source metadata."""
 
-    min_width = 180
+    min_width = 150
     min_height = 60
 
     @classmethod

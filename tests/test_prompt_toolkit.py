@@ -311,6 +311,7 @@ class NodeBehaviorTests(unittest.TestCase):
 
     def test_ports_have_chinese_display_names(self):
         self.assertEqual(StackSource.RETURN_NAMES, ("Lora堆", "模型列表"))
+        self.assertEqual(StackSource.min_width, 150)
         self.assertEqual(PromptMerger.RETURN_NAMES, ("合并提示词",))
 
     def test_preview_requires_all_three_inputs(self):
@@ -361,6 +362,40 @@ class NodeBehaviorTests(unittest.TestCase):
         self.assertEqual(PromptConfigEditor.RETURN_TYPES, ())
         self.assertTrue(PromptConfigEditor.OUTPUT_NODE)
         self.assertEqual(PromptConfigEditor().edit({"sources": []}, "{}"), ())
+
+
+class FrontendStyleTests(unittest.TestCase):
+    def test_editor_config_dirty_badge_has_transparent_background(self):
+        root = Path(__file__).resolve().parents[1]
+        styles_js = (root / "web" / "shared" / "styles.js").read_text(encoding="utf-8")
+        toolkit_css = (root / "web" / "toolkit.css").read_text(encoding="utf-8")
+
+        rule = '.xh-editor-config.dirty::after { content: "*"; position: absolute; top: 0; right: 0; transform: translate(50%, -50%); z-index: 1; padding: 0 1px; color: #ffd166; background: transparent; font-size: 12px; font-weight: 700; line-height: 1; pointer-events: none; }'
+        self.assertIn(rule, styles_js)
+        self.assertIn(rule, toolkit_css)
+        self.assertNotIn("var(--comfy-menu-bg, #353535)", styles_js)
+        self.assertNotIn("var(--comfy-menu-bg, #353535)", toolkit_css)
+
+    def test_editor_delete_and_dialog_styles_present(self):
+        root = Path(__file__).resolve().parents[1]
+        styles_js = (root / "web" / "shared" / "styles.js").read_text(encoding="utf-8")
+        toolkit_css = (root / "web" / "toolkit.css").read_text(encoding="utf-8")
+
+        for token in [".xh-editor-delete", ".xh-dialog-overlay", ".xh-dialog", ".xh-dialog-btn-danger"]:
+            self.assertIn(token, styles_js)
+            self.assertIn(token, toolkit_css)
+        self.assertNotIn("margin-left: auto", styles_js.split(".xh-editor-delete")[1].split("}")[0])
+        self.assertNotIn("margin-left: auto", toolkit_css.split(".xh-editor-delete")[1].split("}")[0])
+
+    def test_version_matches_changelog(self):
+        root = Path(__file__).resolve().parents[1]
+        init_text = (root / "__init__.py").read_text(encoding="utf-8")
+        changelog = (root / "CHANGELOG.md").read_text(encoding="utf-8")
+        import re
+        match = re.search(r'__version__\s*=\s*"([^"]+)"', init_text)
+        self.assertIsNotNone(match)
+        version = match.group(1)
+        self.assertIn(f"## {version} - ", changelog)
 
 
 if __name__ == "__main__":

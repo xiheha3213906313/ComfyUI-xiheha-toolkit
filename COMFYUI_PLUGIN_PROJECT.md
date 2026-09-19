@@ -21,7 +21,7 @@ validation_configured_at: 2026-09-19T17:11:37.321065+08:00
 - 当前功能模块读取和编辑基础模型/LoRA 同目录 TXT 或 JSON sidecar，完成来源采集、配置选择、词条开关、提示词合并和提示词展示。
 - 采用经典 `NODE_CLASS_MAPPINGS` / `NODE_DISPLAY_NAME_MAPPINGS` 注册方式，前端由 `WEB_DIRECTORY = "./web"` 提供原生 ES Module 扩展。
 - 这是可继续增加同级工具的通用库，不应把仓库边界限定为 sidecar 提示词工具。
-- 当前版本源为根 `__init__.py` 的 `__version__ = "0.6.0"`。
+- 当前版本源为根 `__init__.py` 的 `__version__ = "0.7.0"`。
 
 ## Authoritative files
 
@@ -54,7 +54,7 @@ validation_configured_at: 2026-09-19T17:11:37.321065+08:00
 | 必选输入 | `stack`: `LORA_STACK`，显示 `Lora堆` |
 | 输出（顺序固定） | `LORA_STACK`/`Lora堆`；`XH_SOURCE`/`模型列表` |
 | 行为 | 第一输出按对象身份透传；第二输出由 `stack_to_source` 生成，空栈为 `{"sources": []}` |
-| 前端 | `web/nodes/stack-source.js`；应用端口标签并通知下游 selector |
+| 前端 | `web/nodes/stack-source.js`；应用端口标签、限制最小宽度 150px 并通知下游 selector |
 
 ### `XH_ModelSource`
 

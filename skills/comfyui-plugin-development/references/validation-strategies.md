@@ -8,17 +8,17 @@ The project profile frontmatter stores:
 
 ```yaml
 validation_level: medium
-validation_model: exact-runtime-model-id
+validation_model: exact-host-model-label-or-id
 validation_configured_at: 2026-01-01T12:00:00+08:00
 ```
 
-During initial profile creation, ask the user to choose one level. Give the short descriptions below and recommend `medium` when the user has no preference. Record the exact product/runtime model identifier; if none is available, record `unknown` and say model matching cannot be enforced.
+During initial profile creation, ask the user to choose one level. Give the short descriptions below and recommend `medium` when the user has no preference. Record the exact model label or identifier exposed by the host, runtime/system context, or user; a user-visible selector label such as `Gemini 3.8 Flash` is sufficient for detecting switches. If none is trustworthy, record `unknown` and say model matching cannot be enforced.
 
 Persist a choice or later change with:
 
 ```text
 python <skill-dir>/scripts/set_validation_strategy.py \
-  --root <plugin-root> --level <simple|medium|careful> [--model <exact-model-id>]
+  --root <plugin-root> --level <simple|medium|careful> [--model <host-model-label-or-id>]
 ```
 
 When changing only the level, omit `--model`; the script preserves the existing binding. Supply `--model` when creating the validation configuration or intentionally rebinding it. Never make the caller repeat or guess a model identifier merely to change the level.
@@ -81,9 +81,13 @@ Escalating task-local checks does not silently change the saved default. Tell th
 
 ## Model changes and conversation reminders
 
-- Exact configured/current model match: on a new conversation, state the active level in one sentence and continue.
-- Mismatch: before implementation, state both model IDs and the active level. Ask whether to keep the level or select another. After the answer, persist the selected level with the current model.
-- Unknown current model: do not claim a mismatch. Remind the level on a new conversation and continue.
-- Unknown configured model with a known current model: ask once to bind the existing level or a new level to the known model, then persist it.
+- Exact configured/current model match: on the first project-related turn of a genuinely new conversation, remind the user of the saved level in one short non-blocking sentence and continue. Later tasks in that conversation continue silently.
+- Mismatch: before any mutation, state both model IDs and the saved level, then ask the user to select `simple`, `medium`, or `careful`. Wait for the answer and persist it with the current model.
+- Unknown current model: do not claim a match. At the start of a new project task, state that the host did not expose the identifier, show the saved model/level, and ask which level to use. Wait before editing. If the user supplies a trustworthy model label/ID, persist it; otherwise retain the existing binding and do not repeat the question within that task.
+- Unknown configured model with a known current model: ask once to bind the existing or newly selected level to the known model, then persist it.
+
+A new conversation means no earlier visible turn has discussed or modified this project. A new project task is a distinct requested outcome. Follow-up messages that refine the same in-progress change do not require another check. Outside the one new-conversation reminder, report the saved setting only when asking because of missing, mismatched, or unverifiable identity, or when the user requests it.
 
 Do not judge the new model as stronger or weaker unless product metadata explicitly says so. The user chooses the persistent level; task risk still determines mandatory safety evidence.
+
+Use the host's native structured choice UI when available. Once a blocking question has been sent, no project command or edit may run until the user response is returned. With a plain-text question, end the turn immediately.
