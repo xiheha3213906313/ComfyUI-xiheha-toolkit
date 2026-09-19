@@ -13,9 +13,10 @@ import * as modelSource from "./nodes/model-source.js";
 import * as promptSelector from "./nodes/prompt-selector.js";
 import * as promptPreview from "./nodes/prompt-preview.js";
 import * as promptMerger from "./nodes/prompt-merger.js";
+import * as promptDisplay from "./nodes/prompt-display.js";
 
 // node ID -> beforeRegisterNodeDef patch. Order is irrelevant.
-const NODE_MODULES = [stackSource, modelSource, promptSelector, promptPreview, promptMerger];
+const NODE_MODULES = [stackSource, modelSource, promptSelector, promptPreview, promptMerger, promptDisplay];
 const NODE_PATCHES = Object.fromEntries(NODE_MODULES.map((mod) => [mod.NODE_ID, mod.patch]));
 
 app.registerExtension({

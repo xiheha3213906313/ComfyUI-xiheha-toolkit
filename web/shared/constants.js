@@ -8,6 +8,7 @@ export const EASY_USE_STACK_NODE = "easy loraStack";
 export const SELECTOR_NODE = "XH_PromptSelector";
 export const PREVIEW_NODE = "XH_PromptPreview";
 export const MERGE_NODE = "XH_PromptMerger";
+export const DISPLAY_NODE = "XH_PromptDisplay";
 
 export const MODEL_LOADER_SOURCES = {
     CheckpointLoaderSimple: { widget: "ckpt_name", folder_name: "checkpoints" },
@@ -36,6 +37,10 @@ export const PORT_LABELS = {
     [MERGE_NODE]: {
         inputs: { prompt_1: "提示词1", prompt_2: "提示词2", prompt_3: "提示词3", prompt_4: "提示词4" },
         outputs: ["合并提示词"],
+    },
+    [DISPLAY_NODE]: {
+        inputs: { positive_prompts: "正向提示词", negative_prompts: "负向提示词" },
+        outputs: ["正向提示词", "负向提示词"],
     },
 };
 

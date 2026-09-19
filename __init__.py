@@ -5,9 +5,10 @@ from .nodes.model_source import ModelSource
 from .nodes.prompt_selector import PromptConfigSelector
 from .nodes.prompt_preview import PromptPreview
 from .nodes.prompt_merge import PromptMerger
+from .nodes.prompt_display import PromptDisplay
 from .server import register_routes
 
-__version__ = "0.4.1"
+__version__ = "0.5.1"
 
 NODE_CLASS_MAPPINGS = {
     "XH_StackSource": StackSource,
@@ -15,6 +16,7 @@ NODE_CLASS_MAPPINGS = {
     "XH_PromptSelector": PromptConfigSelector,
     "XH_PromptPreview": PromptPreview,
     "XH_PromptMerger": PromptMerger,
+    "XH_PromptDisplay": PromptDisplay,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -23,6 +25,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "XH_PromptSelector": "选择提示词配置",
     "XH_PromptPreview": "模型提示词控制",
     "XH_PromptMerger": "提示词合并",
+    "XH_PromptDisplay": "显示提示词",
 }
 
 WEB_DIRECTORY = "./web"

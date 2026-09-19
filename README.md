@@ -11,14 +11,20 @@ ComfyUI 自定义节点**工具库**（`xiheha-工具箱`），当前模块为�
 | 选择提示词配置 | 扫描 sidecar 配置，选择正向/负向提示词 |
 | 模型提示词控制 | 按词条启用/关闭提示词，实时预览 |
 | 提示词合并 | 按端口顺序合并最多四段提示词 |
+| 显示提示词 | 分别显示连接到正向/负向端口的提示词，并透传两个输出 |
 
 ## 效果预览
 
-![工作流示例](workflow-example.png)
+![工作流示例](examples/images/workflow-example.png)
 
 ## 安装
 
-复制到 `ComfyUI/custom_nodes/xiheha-toolkit`，重启 ComfyUI 并刷新浏览器页面。
+```bash
+cd ComfyUI/custom_nodes
+git clone https://github.com/xiheha3213906313/ComfyUI-xiheha-toolkit.git
+```
+
+重启 ComfyUI 并刷新浏览器页面。
 
 ## 配置格式
 

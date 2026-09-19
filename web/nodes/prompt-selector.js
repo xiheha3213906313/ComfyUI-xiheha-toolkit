@@ -19,6 +19,7 @@ import {
     nodeTypeId,
     applyPortLabels,
     parseUiPayload,
+    notifyPromptDisplays,
 } from "../shared/dom.js";
 import { inspectSources } from "../shared/api.js";
 import { collectSourceEntries } from "../shared/upstream.js";
@@ -99,6 +100,7 @@ function selectorController(node) {
                 if (previewHasAllInputsFrom(target, node)) target.__xhPreview?.setRows(this.getRows().map(rowToPreviewRow));
                 else target.__xhPreview?.setRows([]);
             }
+            notifyPromptDisplays(node);
         },
         render() {
             scroll.textContent = "";
@@ -202,6 +204,7 @@ function selectorController(node) {
                 if (previewHasAllInputsFrom(target, node)) target.__xhPreview?.setRows(this.runtimeRows.map(rowToPreviewRow));
                 else target.__xhPreview?.setRows([]);
             }
+            notifyPromptDisplays(node);
         },
     };
     controller.readState();

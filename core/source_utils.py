@@ -14,16 +14,12 @@ MODEL_SOURCE_FOLDERS = ("checkpoints", "diffusion_models")
 
 
 def stack_item_to_record(item: object) -> dict[str, Any] | None:
-    folder_name = None
+    folder_name = "loras"
     if isinstance(item, dict):
         name = item.get("source_name", item.get("name", ""))
-        model_strength = item.get("model_strength", item.get("strength", 1.0))
-        clip_strength = item.get("clip_strength", item.get("strength", 1.0))
-        folder_name = item.get("folder_name")
+        folder_name = item.get("folder_name", "loras")
     elif isinstance(item, (list, tuple)) and item:
         name = item[0]
-        model_strength = item[1] if len(item) > 1 else 1.0
-        clip_strength = item[2] if len(item) > 2 else model_strength
     else:
         return None
 
@@ -31,11 +27,8 @@ def stack_item_to_record(item: object) -> dict[str, Any] | None:
         return None
     record = {
         "source_name": str(name),
-        "model_strength": float(model_strength),
-        "clip_strength": float(clip_strength),
+        "folder_name": str(folder_name or "loras"),
     }
-    if folder_name is not None:
-        record["folder_name"] = str(folder_name or "loras")
     return record
 
 

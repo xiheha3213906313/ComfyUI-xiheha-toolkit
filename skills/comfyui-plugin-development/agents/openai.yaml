@@ -1,0 +1,4 @@
+interface:
+  display_name: "ComfyUI Plugin Development"
+  short_description: "Develop and verify ComfyUI custom-node plugins safely"
+  default_prompt: "Use $comfyui-plugin-development to inspect this ComfyUI plugin, implement the requested change, and verify every affected contract."

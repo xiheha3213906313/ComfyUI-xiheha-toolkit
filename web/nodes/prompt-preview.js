@@ -14,6 +14,7 @@ import {
     promptTokens,
     nodeTypeId,
     applyPortLabels,
+    notifyPromptDisplays,
 } from "../shared/dom.js";
 
 export const NODE_ID = PREVIEW_NODE;
@@ -86,10 +87,24 @@ function previewController(node) {
             if (enabled) delete this.tokenState[key];
             else this.tokenState[key] = false;
             this.saveTokenState();
+            notifyPromptDisplays(node);
         },
         setRows(rows) {
             this.rows = Array.isArray(rows) ? rows.map(rowToPreviewRow) : [];
             this.render();
+            notifyPromptDisplays(node);
+        },
+        getOutputValues() {
+            return ["positive", "negative"].map((side) => {
+                const tokens = [];
+                for (const row of this.rows) {
+                    for (const [index, token] of (row[`${side}_tokens`] || []).entries()) {
+                        if (this.isTokenEnabled(row, side, index)) tokens.push(token);
+                    }
+                }
+                const normalized = tokens.join(", ");
+                return normalized ? `${normalized},` : "";
+            });
         },
         render() {
             scroll.textContent = "";

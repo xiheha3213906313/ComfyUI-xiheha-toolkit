@@ -14,6 +14,7 @@ from nodes.model_source import ModelSource
 from nodes.prompt_preview import PromptPreview, build_preview_rows, preview_token_key
 from nodes.prompt_selector import build_prompt_rows
 from nodes.prompt_merge import PromptMerger
+from nodes.prompt_display import PromptDisplay
 
 
 class PromptUtilityTests(unittest.TestCase):
@@ -141,14 +142,22 @@ class NodeBehaviorTests(unittest.TestCase):
         upstream = [("folder/sample.safetensors", 0.6, 0.4), ("other.safetensors", 0.75, 0.75)]
         stack, source = node.get_source(upstream)
         self.assertIs(stack, upstream)
-        self.assertEqual([item["source_name"] for item in source["sources"]], ["folder/sample.safetensors", "other.safetensors"])
+        self.assertEqual(
+            source,
+            {
+                "sources": [
+                    {"source_name": "folder/sample.safetensors", "folder_name": "loras"},
+                    {"source_name": "other.safetensors", "folder_name": "loras"},
+                ]
+            },
+        )
 
-    def test_stack_adapter_preserves_strengths(self):
+    def test_stack_adapter_drops_unused_strengths_from_source_list(self):
         node = StackSource()
         existing = [("base.safetensors", 1.0, 1.0)]
         stack, source = node.get_source(existing)
         self.assertEqual(stack, existing)
-        self.assertEqual(source["sources"][0]["source_name"], "base.safetensors")
+        self.assertEqual(source, {"sources": [{"source_name": "base.safetensors", "folder_name": "loras"}]})
 
     def test_easy_stack_empty_matches_easy_use(self):
         stack, source = StackSource().get_source(None)
@@ -254,6 +263,18 @@ class NodeBehaviorTests(unittest.TestCase):
         for name in ["prompt_1", "prompt_2", "prompt_3", "prompt_4"]:
             section = "required" if name == "prompt_1" else "optional"
             self.assertTrue(inputs[section][name][1]["forceInput"])
+
+    def test_display_requires_positive_and_negative_inputs_and_passes_them_through(self):
+        inputs = PromptDisplay.INPUT_TYPES()
+        self.assertEqual(list(inputs["required"]), ["positive_prompts", "negative_prompts"])
+        for name in ["positive_prompts", "negative_prompts"]:
+            self.assertTrue(inputs["required"][name][1]["forceInput"])
+
+        result = PromptDisplay().display("positive text", "negative text")
+        self.assertEqual(PromptDisplay.RETURN_TYPES, ("STRING", "STRING"))
+        self.assertEqual(PromptDisplay.RETURN_NAMES, ("正向提示词", "负向提示词"))
+        self.assertEqual(result["result"], ("positive text", "negative text"))
+        self.assertEqual(json.loads(result["ui"]["xh_ports"][0]), ["positive text", "negative text"])
 
 
 if __name__ == "__main__":

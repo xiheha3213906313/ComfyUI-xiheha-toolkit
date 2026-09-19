@@ -1,0 +1,273 @@
+---
+profile_schema: comfyui-plugin-project/v1
+profile_status: complete
+project_name: xiheha-toolkit
+analyzed_at: 2026-09-19T14:41:11+08:00
+declined_at: null
+remind_after: null
+analysis_scope: full-static
+---
+
+# xiheha-toolkit 项目档案
+
+本文件记录稳定、可核对的项目事实，供后续开发首先读取。分析基于上述时间的当前工作树（包含未提交内容）；它不是源码替代品，也不记录瞬时 Git 状态。
+
+## Purpose and boundaries
+
+- ComfyUI 自定义节点工具库，节点分类根为 `xiheha-工具箱`，公共节点 ID 使用 `XH_` 前缀。
+- 当前功能模块读取基础模型/LoRA 同目录 TXT 或 JSON sidecar，完成来源采集、配置选择、词条开关、提示词合并和提示词展示。
+- 采用经典 `NODE_CLASS_MAPPINGS` / `NODE_DISPLAY_NAME_MAPPINGS` 注册方式，前端由 `WEB_DIRECTORY = "./web"` 提供原生 ES Module 扩展。
+- 这是可继续增加同级工具的通用库，不应把仓库边界限定为 sidecar 提示词工具。
+- 当前版本源为根 `__init__.py` 的 `__version__ = "0.5.1"`。
+
+## Authoritative files
+
+| 路径 | 权威职责 | 修改时的同步点 |
+| --- | --- | --- |
+| `__init__.py` | 版本、Python 节点导入、公共 ID/显示名、`WEB_DIRECTORY`、路由注册 | 新节点/改名/发版必须核对这里 |
+| `nodes/*.py` | ComfyUI 输入输出契约与执行行为 | 参数、返回槽、UI payload、测试、前端镜像 |
+| `core/*.py` | 无 UI 的来源归一化、sidecar 解析、提示词处理 | 所有生产者/消费者及边界测试 |
+| `server.py` | 本地只读预览接口 | `web/shared/api.js`、输入校验、路径安全测试 |
+| `web/shared/constants.js` | 前端节点 ID、外部 loader 映射、端口显示标签 | Python 注册/端口顺序/外部真实标识 |
+| `web/xiheha_toolkit.js` | 唯一 `app.registerExtension` 入口和节点模块分发 | 新前端节点模块、外部 observer |
+| `web/nodes/*.js` | 每节点 controller 和生命周期 patch | Python 节点 ID、状态 widget、payload key |
+| `web/shared/*.js` | DOM、图遍历、接口、上游监听、运行时样式 | 外部端口/widget、异步刷新、状态键 |
+| `web/shared/styles.js` | 运行时注入样式的单一来源 | `web/toolkit.css` 保持为可读镜像 |
+| `tests/test_prompt_toolkit.py` | 解析、路径、节点契约和行为回归 | 任何用户可见行为或公共契约变更 |
+| `README.md` | 用户安装、节点和配置格式 | 只记录实际支持的用户行为 |
+| `CHANGELOG.md` | 用户可见版本历史 | 用户可见变更和版本号同步 |
+| `skills/comfyui-plugin-development/` | 通用 ComfyUI 插件开发、项目建档、最小入口生成和验证流程 | 修改技能后运行 skill 校验及对应脚本测试 |
+
+## Node registry and contracts
+
+所有节点当前均为普通单值输入/输出，没有声明 `INPUT_IS_LIST`、`OUTPUT_IS_LIST`、lazy 输入或异步执行。
+
+### `XH_StackSource`
+
+| 项 | 值 |
+| --- | --- |
+| 实现/显示名 | `nodes/easy_lora_stack.py::StackSource` / `easy-use兼容_模型列表获取` |
+| 分类/函数 | `xiheha-工具箱/模型列表获取` / `get_source` |
+| 必选输入 | `stack`: `LORA_STACK`，显示 `Lora堆` |
+| 输出（顺序固定） | `LORA_STACK`/`Lora堆`；`XH_SOURCE`/`模型列表` |
+| 行为 | 第一输出按对象身份透传；第二输出由 `stack_to_source` 生成，空栈为 `{"sources": []}` |
+| 前端 | `web/nodes/stack-source.js`；应用端口标签并通知下游 selector |
+
+### `XH_ModelSource`
+
+| 项 | 值 |
+| --- | --- |
+| 实现/显示名 | `nodes/model_source.py::ModelSource` / `模型列表获取` |
+| 分类/函数 | `xiheha-工具箱/模型列表获取` / `get_source` |
+| 必选输入 | `model`: `MODEL`，显示 `模型` |
+| 输出（顺序固定） | `MODEL`/`模型`；`XH_SOURCE`/`模型列表` |
+| 行为 | MODEL 原对象透传；只从 `cached_patcher_init[1][0]` 读取 loader 源路径，无法识别时返回空来源，不重新加载模型 |
+| 前端 | `web/nodes/model-source.js`；应用端口标签并通知下游 selector |
+
+### `XH_PromptSelector`
+
+| 项 | 值 |
+| --- | --- |
+| 实现/显示名 | `nodes/prompt_selector.py::PromptConfigSelector` / `选择提示词配置` |
+| 分类/函数 | `xiheha-工具箱/提示词` / `select` |
+| 必选输入（声明顺序） | `source`: `XH_SOURCE`，显示 `模型列表`；`selection_state`: `STRING`，默认 `{}`，显示 `配置选择状态` |
+| 输出（顺序固定） | 三个 `STRING`：`模型名称`、`正向提示词`、`负向提示词` |
+| 行为 | 每个来源读取 sidecar；未保存选择时默认首个配置；选择 `None`/关闭会跳过整行；三路以换行对齐 |
+| 执行返回 | `{"ui": {"xh_rows": [<JSON 字符串>]}, "result": (names, positive, negative)}` |
+| 持久状态 | `selection_state` 是工作流中的 JSON 字符串映射 `{source_name: config_index|null}`；前端将原 widget 隐藏而非删除 |
+| 前端 | `web/nodes/prompt-selector.js`；`refreshSequence` 防止旧异步请求覆盖新请求，controller 为 `__xhSelector` |
+
+### `XH_PromptPreview`
+
+| 项 | 值 |
+| --- | --- |
+| 实现/显示名 | `nodes/prompt_preview.py::PromptPreview` / `模型提示词控制` |
+| 分类/函数 | `xiheha-工具箱/提示词` / `preview` |
+| 必选输入（声明顺序） | `model_names`、`positive_prompts`、`negative_prompts`: `STRING`、多行、`forceInput: true`；`token_state`: `STRING`、默认 `{}`、`hidden: true` |
+| 输出（顺序固定） | 两个 `STRING`：`正向提示词`、`负向提示词` |
+| 行为 | 逗号拆分词条；按开关过滤后分别合并，非空结果补尾部 ASCII 逗号；三路连接完整时前端才实时预览 |
+| 执行返回 | `{"ui": {"xh_rows": [<JSON 字符串>]}, "result": (positive, negative)}` |
+| 持久状态 | `token_state` 键为 `<model_name>|positive|<index>` 或 `<model_name>|negative|<index>`，值缺省为启用 |
+| 前端 | `web/nodes/prompt-preview.js`；隐藏状态 widget，controller 为 `__xhPreview` |
+
+### `XH_PromptMerger`
+
+| 项 | 值 |
+| --- | --- |
+| 实现/显示名 | `nodes/prompt_merge.py::PromptMerger` / `提示词合并` |
+| 分类/函数 | `xiheha-工具箱/提示词` / `merge` |
+| 必选输入 | `prompt_1`: `STRING`、多行、`forceInput: true`、显示 `提示词1` |
+| 可选输入（顺序） | `prompt_2`、`prompt_3`、`prompt_4`: 同为 `STRING`、多行、`forceInput: true` |
+| 输出 | `STRING`/`合并提示词` |
+| 行为 | 各端口清洗并补尾逗号，忽略空值，按 1→4 用空格连接 |
+| 执行返回 | `{"ui": {"xh_ports": [<固定四项 JSON 字符串>]}, "result": (merged,)}`；UI payload 保留空端口位置 |
+| 前端 | `web/nodes/prompt-merger.js`；隐藏原输入 widget，controller 为 `__xhMerge` |
+
+### `XH_PromptDisplay`
+
+| 项 | 值 |
+| --- | --- |
+| 实现/显示名 | `nodes/prompt_display.py::PromptDisplay` / `显示提示词` |
+| 分类/函数 | `xiheha-工具箱/提示词` / `display` |
+| 必选输入（顺序） | `positive_prompts`、`negative_prompts`: `STRING`、多行、`forceInput: true` |
+| 输出（顺序固定） | 两个 `STRING`：`正向提示词`、`负向提示词` |
+| 行为 | `None` 变空字符串，其余转字符串，分别原样透传 |
+| 执行返回 | `{"ui": {"xh_ports": [<两项 JSON 字符串>]}, "result": (positive, negative)}` |
+| 前端 | `web/nodes/prompt-display.js`；隐藏原 widget，从 selector/preview 实时读取或用执行 payload 更新，controller 为 `__xhPromptDisplay` |
+
+## Custom data and persisted state
+
+### `XH_SOURCE`
+
+唯一规范结构：
+
+```json
+{
+  "sources": [
+    {
+      "source_name": "subfolder/example.safetensors",
+      "folder_name": "checkpoints"
+    }
+  ]
+}
+```
+
+- `source_name` 必须是相对对应 ComfyUI 模型目录的路径；不允许绝对路径或 `..` 路径组件。
+- `folder_name` 当前只允许 `loras`、`checkpoints`、`diffusion_models`。
+- LoRA tuple/dict 在 `core/source_utils.py::stack_item_to_record` 归一化；强度字段不进入 `XH_SOURCE`。
+- `StackSource` 和 `ModelSource` 是生产者，`PromptConfigSelector` 与预览接口是消费者。
+
+### 解析结果
+
+`core/config_parser.py::SourceInspection` 字段固定为：
+
+- `source_name: str`
+- `display_name: str`
+- `config_file: str | None`（只返回文件名）
+- `configs: list[PromptConfig]`
+- `error: str | None`
+- `folder_name: str`
+
+`PromptConfig` 字段为 `index: int`、`positive: str`、`negative: str`、`labels: list[str]`。
+
+### Sidecar 规则
+
+查找顺序固定：
+
+1. `模型名.txt`
+2. `模型名.json`
+3. `模型名.safetensors.json`
+4. `模型名.safetensors.txt`
+
+TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支持标签后续多行；没有标签的纯文本视为配置 1 的正向提示词。JSON 递归查找同类标签，并兼容顶层 `positive`/`prompt`/`positive_prompt` 与 `negative`/`negative_prompt`。
+
+## Frontend integration
+
+- `web/xiheha_toolkit.js` 是唯一允许调用 `app.registerExtension` 的入口。
+- 节点模块映射：`stack-source.js`、`model-source.js`、`prompt-selector.js`、`prompt-preview.js`、`prompt-merger.js`、`prompt-display.js`。
+- 单向依赖目标：常量/样式 → 共享 DOM/API/上游 → 节点模块 → 入口。避免节点模块循环依赖。
+- `web/shared/constants.js::PORT_LABELS` 是 Python 端口显示名的前端镜像；输出数组索引必须与 Python 槽位一致。
+- selector/preview/merger/display 的 DOM 区域最小尺寸当前为 400×300，滚动 widget 最小内容高度 200。
+- 运行时样式来自 `web/shared/styles.js::TOOLKIT_STYLES`；`web/toolkit.css` 是同步维护的可读参考。
+- 执行 UI payload key 只有 `xh_rows` 和 `xh_ports`；前端通过 `parseUiPayload` 读取数组第一个 JSON 值。
+
+### 外部契约（不得重命名）
+
+| 外部节点 | 标识/端口/widget | 用途 |
+| --- | --- | --- |
+| easy-use | 节点 ID `easy loraStack` | LoRA 来源追踪 |
+| easy-use | 级联输入 `optional_lora_stack` | 向上合并堆 |
+| easy-use | `toggle`、`mode`、`num_loras`、`lora_<n>_name` 及强度 widget | 变化监听；强度不写入 `XH_SOURCE` |
+| ComfyUI loader | `CheckpointLoaderSimple` / `CheckpointLoader` / `unCLIPCheckpointLoader`, widget `ckpt_name` | `checkpoints` 来源 |
+| ComfyUI loader | `UNETLoader`, widget `unet_name` | `diffusion_models` 来源 |
+
+## Routes and trust boundaries
+
+唯一接口：`POST /xiheha_toolkit/inspect`，由 `register_routes()` 幂等注册，仅供当前 ComfyUI 前端预览。
+
+请求：
+
+```json
+{"sources": [{"source_name": "example.safetensors", "folder_name": "loras"}]}
+```
+
+响应：
+
+```json
+{"sources": [{"source_name": "example.safetensors", "display_name": "example", "config_file": null, "configs": [], "error": null, "folder_name": "loras"}]}
+```
+
+- 非 JSON、`sources` 非数组返回 400；一次最多 100 项。
+- 路由只接纳 dict 项且字段为字符串，再由解析层限制目录并校验相对路径。
+- `folder_paths.get_full_path` 负责注册目录解析；不把绝对路径返回前端。
+- 单文件解析异常转换为简短 `error`，不泄漏堆栈；当前异常文本可能包含解析器消息，修改错误策略时需检查敏感信息。
+- 前端调用仅在 `web/shared/api.js`，无互联网请求。
+
+## Model, latent, device, and memory behavior
+
+- 本项目不执行推理算子，不处理 LATENT/IMAGE/CONDITIONING，不创建或缓存张量。
+- `XH_ModelSource` 只读 `MODEL.cached_patcher_init` 的源路径元数据并按已登记根目录转换为相对路径。
+- MODEL 与 LORA_STACK 的第一输出保持输入对象身份；无 clone、deepcopy、设备迁移、dtype 转换、patch 修改、显存清理或模型重新加载。
+- 未携带 loader 元数据、路径不在 `checkpoints`/`diffusion_models` 根目录或无法解析时，模型仍透传，来源为空。
+
+## Compatibility invariants
+
+- 公共 ID、类型名、端口内部名、端口顺序和输出类型是工作流契约；除非用户明确接受破坏性变化，否则保持稳定。
+- 当前已完成一次性 `LPT_` → `XH_`、`LORA_PROMPT_SOURCE` → `XH_SOURCE`、旧来源字段 → `sources/source_name` 迁移；当前代码不保留旧名兼容分支。
+- 不为外部 easy-use 标识创建本地别名，不修改其端口/widget 名。
+- 前端预览和 Python 队列执行必须同时实现同一行为；不能只修一侧。
+- `selection_state` 和 `token_state` 属于保存工作流的状态，DOM controller 缓存不属于持久格式。
+- 选择器异步请求必须保持序列保护，防止旧响应覆盖新来源。
+
+## Validation map
+
+### 自动测试
+
+```powershell
+$env:PYTHONPATH = "E:\HuiShi_launcher-WorkFisher-V2\ComfyUI"
+& "E:\HuiShi_launcher-WorkFisher-V2\python\python.exe" -m unittest discover -s tests
+```
+
+Python 编译：
+
+```powershell
+$py = Get-ChildItem __init__.py,server.py,core\*.py,nodes\*.py | ForEach-Object { $_.FullName }
+& "E:\HuiShi_launcher-WorkFisher-V2\python\python.exe" -m py_compile @py
+```
+
+前端语法：
+
+```powershell
+Get-ChildItem -Recurse web -Filter *.js | ForEach-Object { node --check $_.FullName }
+```
+
+若固定路径不存在，使用可用 Python，并确保 ComfyUI 根目录进入 `PYTHONPATH`。注册/路由导入需要真实或受控的 ComfyUI 环境；不能把单独导入节点模块等同于插件完整导入。
+
+### 手工 ComfyUI 验收
+
+1. 插件重载/ComfyUI 重启后，六个节点能被搜索并显示正确分类、名称和端口。
+2. Checkpoint/UNET loader → `模型列表获取` → 下游 MODEL 的透传不变；第二输出 → selector 能预览配置。
+3. easy-use `easy loraStack`（含 `optional_lora_stack` 级联）→ stack adapter → selector 能按顺序获得 LoRA。
+4. 快速修改上游 loader/LoRA 后 selector 只显示最新请求结果。
+5. selector 三路连接 preview 后词条开关正确，保存并重开工作流后选择与开关状态不丢失。
+6. merger 空端口占位和顺序正确；display 正负文本实时/执行后显示并保持两路透传。
+7. 无 sidecar、错误 sidecar、无模型源元数据时提示清晰且不无故阻断模型透传。
+8. 浏览器控制台无新增异常，DOM 不重复安装或越出节点。
+
+## Documentation and release bookkeeping
+
+- 用户可见行为变化：更新 `README.md`（如使用方式受影响）和 `CHANGELOG.md`。
+- 版本号唯一代码源当前是根 `__init__.py::__version__`；发版变更与 changelog 版本同步。
+- 工作流示例图片位于 `examples/images/workflow-example.png`；只有实际更新并核对示例时才声称其覆盖新行为。
+- 新节点或结构变更同时更新本档案的注册表、端口、前端映射和验收路径。
+
+## Unknowns and unverified items
+
+- 本次档案创建完成了全仓库静态读取，但尚未因此启动 ComfyUI、打开浏览器或执行手工连线。
+- 未因此验证当前 ComfyUI 版本的前端 API 兼容性、easy-use 实际安装版本或真实 loader widget 运行时形态。
+- 未进行 GPU/显存测试；当前代码静态上不执行张量或推理操作。
+- 档案创建时自动测试结果应以创建任务的交付报告为准，不在此处固化瞬时结果。
+
+## Profile maintenance rules
+
+以下变化必须在同一任务更新本文件：节点注册/显示名/分类、输入输出/状态、`XH_SOURCE` 或 sidecar 格式、前端模块/外部契约、接口/安全边界、模型行为、测试命令和手工验收路径。普通实现细节或瞬时 Git 状态不更新档案；局部更新不冒充全仓库重新解析，不随意刷新 `analyzed_at`。
