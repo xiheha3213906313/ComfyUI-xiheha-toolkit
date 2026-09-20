@@ -2,6 +2,7 @@
 import { api } from "../../../scripts/api.js";
 import { app } from "../../../scripts/app.js";
 import { SMART_SPLITTER_NODE } from "../shared/constants.js";
+import { MIN_HEIGHT, MIN_WIDTH, preserveNodeSize } from "./smart-video-splitter-size.js";
 import {
     applyPortLabels,
     createRoot,
@@ -23,9 +24,7 @@ import {
 } from "../shared/tooltip.js";
 
 export const NODE_ID = SMART_SPLITTER_NODE;
-
-export const MIN_WIDTH = 500;
-export const MIN_HEIGHT = 600;
+export { MIN_HEIGHT, MIN_WIDTH } from "./smart-video-splitter-size.js";
 
 const MIN_RANGE = 3.0;
 const MAX_RANGE = 15.0;
@@ -149,6 +148,14 @@ export function setupWidgetTooltips() {
     }
 }
 
+function resizeNodeToFit(node) {
+    if (!node?.setSize) return;
+    const nextSize = preserveNodeSize(node.size, node.computeSize?.());
+    if (nextSize[0] !== node.size?.[0] || nextSize[1] !== node.size?.[1]) {
+        node.setSize(nextSize);
+    }
+}
+
 // 自动互斥处理：严格限制在当前智能视频分割器节点实例内，绝不触碰或影响其它任何节点
 export function applyTooltipMutualExclusion(node) {
     if (!node || !node.widgets) return;
@@ -189,12 +196,7 @@ export function splitterController(node) {
         return res;
     };
 
-    if (node.setSize) {
-        node.setSize([
-            Math.max(MIN_WIDTH, Number(node.size?.[0]) || MIN_WIDTH),
-            Math.max(MIN_HEIGHT, Number(node.size?.[1]) || MIN_HEIGHT),
-        ]);
-    }
+    resizeNodeToFit(node);
 
     let splitMode = "fuzzy";
     let fuzzyMin = 4.0;
@@ -356,11 +358,7 @@ export function splitterController(node) {
             }
         }
         applyTooltipMutualExclusion(node);
-        if (node.setSize && node.computeSize) {
-            const sz = node.computeSize();
-            const curW = Math.max(MIN_WIDTH, Number(node.size?.[0]) || MIN_WIDTH);
-            node.setSize([Math.max(curW, sz[0] || MIN_WIDTH), Math.max(MIN_HEIGHT, sz[1] || MIN_HEIGHT)]);
-        }
+        resizeNodeToFit(node);
         markDirty(node);
     }
 
@@ -531,11 +529,7 @@ export function splitterController(node) {
         videoEl.src = viewUrl;
         videoEl.hidden = false;
         videoEl.onloadedmetadata = () => {
-            if (node.setSize && node.computeSize) {
-                const sz = node.computeSize();
-                const curW = Math.max(MIN_WIDTH, Number(node.size?.[0]) || MIN_WIDTH);
-                node.setSize([Math.max(curW, sz[0] || MIN_WIDTH), Math.max(MIN_HEIGHT, sz[1] || MIN_HEIGHT)]);
-            }
+            resizeNodeToFit(node);
             markDirty(node);
         };
 
@@ -749,20 +743,14 @@ export function patch(nodeType) {
         applyPortLabels(this);
         splitterController(this);
         enforceNodeMinimumSize(this, MIN_WIDTH, MIN_HEIGHT);
-        this.setSize?.([
-            Math.max(MIN_WIDTH, Number(this.size?.[0]) || MIN_WIDTH),
-            Math.max(MIN_HEIGHT, Number(this.size?.[1]) || MIN_HEIGHT),
-        ]);
+        resizeNodeToFit(this);
     };
 
     const origConfigure = nodeType.prototype.onConfigure;
     nodeType.prototype.onConfigure = function (data) {
         origConfigure?.apply(this, arguments);
         enforceNodeMinimumSize(this, MIN_WIDTH, MIN_HEIGHT);
-        this.setSize?.([
-            Math.max(MIN_WIDTH, Number(this.size?.[0]) || MIN_WIDTH),
-            Math.max(MIN_HEIGHT, Number(this.size?.[1]) || MIN_HEIGHT),
-        ]);
+        resizeNodeToFit(this);
         const stateWidget = widgetByName(this, "splitter_state");
         if (stateWidget?.value && this.__xhSplitter) {
             try {

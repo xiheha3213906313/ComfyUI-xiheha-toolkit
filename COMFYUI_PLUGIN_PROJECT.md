@@ -7,8 +7,9 @@ declined_at: null
 remind_after: null
 analysis_scope: full-static
 validation_level: simple
-validation_model: Gemini 3.8 Flash (High)
-validation_configured_at: 2026-09-20T01:25:32.256768+08:00
+validation_model: "Gemini 3.8 Flash (High)"
+validation_configured_at: 2026-09-20T23:27:57.714786+08:00
+validation_agent: "Antigravity"
 ---
 
 # xiheha-toolkit 项目档案
@@ -21,7 +22,7 @@ validation_configured_at: 2026-09-20T01:25:32.256768+08:00
 - 当前功能模块包括基础模型/LoRA 同目录 TXT 或 JSON sidecar 提示词配置（来源采集、配置选择、词条开关、提示词合并与展示）以及视频智能分割。
 - 采用经典 `NODE_CLASS_MAPPINGS` / `NODE_DISPLAY_NAME_MAPPINGS` 注册方式，前端由 `WEB_DIRECTORY = "./web"` 提供原生 ES Module 扩展。
 - 这是可继续增加同级工具的通用库，不应把仓库边界限定为 sidecar 提示词工具。
-- 当前版本源为根 `__init__.py` 的 `__version__ = "0.8.0"`。
+- 当前版本源为根 `__init__.py` 的 `__version__ = "0.8.1"`。
 
 ## UI and design rules
 
@@ -267,7 +268,7 @@ TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支�
 - 节点模块映射：`stack-source.js`、`model-source.js`、`prompt-selector.js`、`prompt-preview.js`、`prompt-merger.js`、`prompt-display.js`、`prompt-config-editor.js`、`smart-video-splitter.js`。
 - 单向依赖目标：常量/样式 → 共享 DOM/API/上游 → 节点模块 → 入口。避免节点模块循环依赖。
 - `web/shared/constants.js::PORT_LABELS` 是 Python 端口显示名的前端镜像；输出数组索引必须与 Python 槽位一致。
-- selector/preview/merger/display 的 DOM 区域最小尺寸当前为 400×300；config editor 为 520×370，滚动 widget 最小内容高度 280；smart video splitter 为自适应高度（最小 340）。
+- selector/preview/merger/display 的 DOM 区域最小尺寸当前为 400×300；config editor 为 520×370，滚动 widget 最小内容高度 280；smart video splitter 节点最小尺寸为 350×700，上传视频、切换模式等自动布局只会补足或扩大尺寸，不会缩小用户手动设置的尺寸。
 - 运行时样式来自 `web/shared/styles.js::TOOLKIT_STYLES`；`web/toolkit.css` 是同步维护的可读参考。
 - 执行 UI payload key 只有 `xh_rows` 和 `xh_ports`；前端通过 `parseUiPayload` 读取数组第一个 JSON 值。
 

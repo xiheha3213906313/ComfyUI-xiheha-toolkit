@@ -2,6 +2,7 @@
 
 import os
 import shutil
+import subprocess
 import tempfile
 import unittest
 import numpy as np
@@ -325,6 +326,36 @@ class TestFrontendTooltipIntegration(unittest.TestCase):
         self.assertIn("export function applyTooltipMutualExclusion", js_content)
         self.assertIn("WIDGET_TOOLTIPS[w.name]", js_content, "Must guard with whitelist to protect other nodes")
         self.assertIn("w.__origTooltip", js_content)
+
+
+class TestFrontendNodeSizing(unittest.TestCase):
+    """Verify automatic layout never shrinks a manually expanded splitter node."""
+
+    def test_minimum_size_and_manual_expansion_are_preserved(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node.js is required for the frontend sizing regression test")
+
+        module_uri = (
+            os.path.join(os.path.dirname(__file__), "..", "web", "nodes", "smart-video-splitter-size.js")
+        )
+        module_uri = os.path.abspath(module_uri).replace("\\", "/")
+        script = f"""
+            import {{ MIN_WIDTH, MIN_HEIGHT, preserveNodeSize }} from 'file:///{module_uri}';
+            const assert = (condition, message) => {{ if (!condition) throw new Error(message); }};
+            assert(MIN_WIDTH === 350, `expected 350px minimum width, got ${{MIN_WIDTH}}`);
+            assert(MIN_HEIGHT === 700, `expected 700px minimum height, got ${{MIN_HEIGHT}}`);
+            assert(JSON.stringify(preserveNodeSize([640, 900], [350, 700])) === '[640,900]', 'manual expansion was shrunk');
+            assert(JSON.stringify(preserveNodeSize([200, 500], [300, 650])) === '[350,700]', 'minimum size was not enforced');
+            assert(JSON.stringify(preserveNodeSize([400, 800], [520, 860])) === '[520,860]', 'computed expansion was not applied');
+        """
+        result = subprocess.run(
+            [node, "--input-type=module", "--eval", script],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":
