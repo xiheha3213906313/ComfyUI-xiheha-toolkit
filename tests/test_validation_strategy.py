@@ -32,12 +32,13 @@ class ValidationStrategyTests(unittest.TestCase):
                 "analyzed_at: 2026-09-19T12:00:00+08:00\n---\n\n# Project\nBody\n",
                 encoding="utf-8",
             )
-            result = STRATEGY.update(root, "medium", "model-a", self.NOW)
+            result = STRATEGY.update(root, "medium", "model-a", self.NOW, "Codex")
             content = profile.read_text(encoding="utf-8")
 
         self.assertEqual(result["status"], "updated")
         self.assertIn("validation_level: medium", content)
-        self.assertIn("validation_model: model-a", content)
+        self.assertIn('validation_model: "model-a"', content)
+        self.assertIn('validation_agent: "Codex"', content)
         self.assertTrue(content.endswith("# Project\nBody\n"))
 
     def test_replaces_existing_configuration_once(self):
@@ -47,7 +48,8 @@ class ValidationStrategyTests(unittest.TestCase):
             profile.write_text(
                 "---\nprofile_schema: comfyui-plugin-project/v1\nprofile_status: complete\n"
                 "analyzed_at: 2026-09-19T12:00:00+08:00\nvalidation_level: careful\n"
-                "validation_model: old-model\nvalidation_configured_at: 2026-09-01T12:00:00+08:00\n"
+                "validation_model: old-model\nvalidation_agent: Cursor\n"
+                "validation_configured_at: 2026-09-01T12:00:00+08:00\n"
                 "---\n\n# Project\n",
                 encoding="utf-8",
             )
@@ -56,7 +58,8 @@ class ValidationStrategyTests(unittest.TestCase):
 
         self.assertEqual(content.count("validation_level:"), 1)
         self.assertIn("validation_level: simple", content)
-        self.assertIn("validation_model: new-model", content)
+        self.assertIn('validation_model: "new-model"', content)
+        self.assertIn('validation_agent: "Cursor"', content)
 
     def test_level_only_change_preserves_existing_model(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -65,7 +68,8 @@ class ValidationStrategyTests(unittest.TestCase):
             profile.write_text(
                 "---\nprofile_schema: comfyui-plugin-project/v1\nprofile_status: complete\n"
                 "analyzed_at: 2026-09-19T12:00:00+08:00\nvalidation_level: careful\n"
-                "validation_model: bound-model\nvalidation_configured_at: 2026-09-01T12:00:00+08:00\n"
+                "validation_model: bound-model\nvalidation_agent: OpenCode\n"
+                "validation_configured_at: 2026-09-01T12:00:00+08:00\n"
                 "---\n\n# Project\n",
                 encoding="utf-8",
             )
@@ -74,8 +78,27 @@ class ValidationStrategyTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "updated")
         self.assertEqual(result["validation_model"], "bound-model")
+        self.assertEqual(result["validation_agent"], "OpenCode")
         self.assertIn("validation_level: simple", content)
-        self.assertIn("validation_model: bound-model", content)
+        self.assertIn('validation_model: "bound-model"', content)
+        self.assertIn('validation_agent: "OpenCode"', content)
+
+    def test_quotes_model_label_as_yaml_safe_json_string(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            profile = root / "COMFYUI_PLUGIN_PROJECT.md"
+            profile.write_text(
+                "---\nprofile_schema: comfyui-plugin-project/v1\nprofile_status: complete\n"
+                "analyzed_at: 2026-09-19T12:00:00+08:00\n---\n\n# Project\n",
+                encoding="utf-8",
+            )
+            result = STRATEGY.update(root, "medium", "Model #1: High", self.NOW, "Claude Code")
+            content = profile.read_text(encoding="utf-8")
+
+        self.assertEqual(result["validation_model"], "Model #1: High")
+        self.assertEqual(result["validation_agent"], "Claude Code")
+        self.assertIn('validation_model: "Model #1: High"', content)
+        self.assertIn('validation_agent: "Claude Code"', content)
 
     def test_new_configuration_requires_model(self):
         with tempfile.TemporaryDirectory() as temp:

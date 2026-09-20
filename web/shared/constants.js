@@ -10,6 +10,7 @@ export const PREVIEW_NODE = "XH_PromptPreview";
 export const MERGE_NODE = "XH_PromptMerger";
 export const DISPLAY_NODE = "XH_PromptDisplay";
 export const CONFIG_EDITOR_NODE = "XH_PromptConfigEditor";
+export const SMART_SPLITTER_NODE = "XH_SmartVideoSplitter";
 
 export const MODEL_LOADER_SOURCES = {
     CheckpointLoaderSimple: { widget: "ckpt_name", folder_name: "checkpoints" },
@@ -46,6 +47,21 @@ export const PORT_LABELS = {
     [CONFIG_EDITOR_NODE]: {
         inputs: { source: "模型列表" },
         outputs: [],
+    },
+    [SMART_SPLITTER_NODE]: {
+        inputs: {},
+        outputs: ["视频流", "音频", "帧数"],
+        widgets: {
+            video: "视频",
+            force_rate: "强制帧率",
+            custom_width: "自定义宽度",
+            custom_height: "自定义高度",
+            format: "模型格式",
+            algorithm: "检测算法",
+            sensitivity: "检测灵敏度",
+            cut_threshold: "切镜阈值",
+            peak_prominence: "显著度阈值",
+        },
     },
 };
 

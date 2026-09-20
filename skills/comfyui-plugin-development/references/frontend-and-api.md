@@ -16,6 +16,7 @@ Follow the plugin's existing frontend architecture and the installed ComfyUI fro
 - Clean up DOM elements, listeners, observers, and timers on node removal when the current architecture requires it.
 - For a DOM popover that must close on clicks over the LiteGraph canvas, first test normal focus/bubble behavior. If Canvas interception prevents bubbling, listen for `pointerdown` on `document` in the capture phase, reject events contained by the trigger/popover, and remove the same handler with the same capture option on close, redraw/rebuild, and node removal.
 - Treat Canvas node sizing as a lifecycle contract across `computeSize`, creation, workflow configuration, and manual resize. A long rendered title may inflate LiteGraph's native minimum width even when the body is empty; read [frontend-visual-debugging.md](frontend-visual-debugging.md) before overriding that behavior.
+- Treat visible status as one state, not an append-only log. Loading, success, failure, stale/dirty, and new-input states should replace one another according to an explicit transition model unless the product intentionally presents history.
 
 Move meaningful non-DOM state transitions into pure functions when practical, especially persisted-state parsing, dirty/clean comparison, model/config switching, index allocation, save-payload construction, partial-success reconciliation, and stale-response rejection. Test those functions with the project's JavaScript test tooling; when no tooling exists, a small dependency-free Node test is preferable to leaving all state logic for manual UI testing.
 
@@ -25,6 +26,20 @@ Classify frontend state:
 - Keep loading flags, errors, request sequence IDs, DOM references, timers, and transient server responses runtime-only.
 
 For large hidden state, evaluate serialized workflow size, clone behavior, and input frequency. Use an appropriate debounce when every keystroke would repeatedly serialize long prompts or mark the graph dirty; do not delay state so long that a workflow save can miss recent edits.
+
+## Module refactors and lifecycle smoke checks
+
+When moving shared behavior into another ES module, identify the single declaration owner, every importer/re-exporter, and the entry point that activates it. Explicitly parse all affected files as ESM; a test that only finds a symbol name can pass with duplicate declarations or dead wiring.
+
+Where practical, add a lightweight JavaScript harness around the actual exported functions with minimal DOM/LiteGraph stubs. Assert observable lifecycle invariants such as:
+
+- the extension entry dispatches the intended node patch;
+- repeated setup mounts or registers once per node instance;
+- creation/configuration restores required state without duplicate controls;
+- removal clears DOM, timers, observers, and global listeners;
+- disabling an optional UI feature takes an intentional fallback path rather than masking a module-load failure.
+
+Do not simulate a complete browser merely to obtain a green test. Browser module loading and a real ComfyUI node creation remain the evidence for actual frontend integration.
 
 When a frontend mirror exists, adding/changing a node commonly requires updating constants, port labels, a node module/controller, entry-point dispatch, styles, state parsing, and manual workflow checks. Use the project profile to identify the actual mirrors.
 
@@ -45,6 +60,8 @@ For async saves as well as previews:
 - reconcile per-item success/failure according to the declared batch contract;
 - retain failed or newer drafts;
 - use mtime/hash/version conflict detection when external writers are plausible.
+
+Global listeners must be scoped by registered node/element ownership and removed deterministically. Use `passive: true` only when the handler never needs `preventDefault()`; passive mode is a performance/behavior declaration, not proof that other nodes are isolated.
 
 ## Cross-layer payload audit
 

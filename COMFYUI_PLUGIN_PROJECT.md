@@ -7,8 +7,8 @@ declined_at: null
 remind_after: null
 analysis_scope: full-static
 validation_level: simple
-validation_model: gpt-5
-validation_configured_at: 2026-09-19T17:11:37.321065+08:00
+validation_model: Gemini 3.8 Flash (High)
+validation_configured_at: 2026-09-20T01:25:32.256768+08:00
 ---
 
 # xiheha-toolkit 项目档案
@@ -18,10 +18,18 @@ validation_configured_at: 2026-09-19T17:11:37.321065+08:00
 ## Purpose and boundaries
 
 - ComfyUI 自定义节点工具库，节点分类根为 `xiheha-工具箱`，公共节点 ID 使用 `XH_` 前缀。
-- 当前功能模块读取和编辑基础模型/LoRA 同目录 TXT 或 JSON sidecar，完成来源采集、配置选择、词条开关、提示词合并和提示词展示。
+- 当前功能模块包括基础模型/LoRA 同目录 TXT 或 JSON sidecar 提示词配置（来源采集、配置选择、词条开关、提示词合并与展示）以及视频智能分割。
 - 采用经典 `NODE_CLASS_MAPPINGS` / `NODE_DISPLAY_NAME_MAPPINGS` 注册方式，前端由 `WEB_DIRECTORY = "./web"` 提供原生 ES Module 扩展。
 - 这是可继续增加同级工具的通用库，不应把仓库边界限定为 sidecar 提示词工具。
-- 当前版本源为根 `__init__.py` 的 `__version__ = "0.7.0"`。
+- 当前版本源为根 `__init__.py` 的 `__version__ = "0.8.0"`。
+
+## UI and design rules
+
+以下内容是本项目的默认 UI 偏好；用户在具体任务中提出的明确要求始终优先：
+
+- 面向用户的界面不使用 Emoji，包括按钮、标签、状态提示和装饰性图标。
+- 用户可见文字在含义准确时使用自然、易懂的中文。技术性很强、没有可靠中文译法，或翻译后容易产生误导的术语保留原文，不为追求全中文而强行翻译。
+- 布局必须为标签、选项和动态内容预留合理空间。新增或调整控件后，检查不同选项数量、条件显隐、展开/折叠、节点缩放和历史工作流载入状态，避免选项、文字、按钮、输入框或边框重叠、遮挡和塌陷。
 
 ## Authoritative files
 
@@ -36,7 +44,11 @@ validation_configured_at: 2026-09-19T17:11:37.321065+08:00
 | `web/nodes/*.js` | 每节点 controller 和生命周期 patch | Python 节点 ID、状态 widget、payload key |
 | `web/shared/*.js` | DOM、图遍历、接口、上游监听、运行时样式 | 外部端口/widget、异步刷新、状态键 |
 | `web/shared/styles.js` | 运行时注入样式的单一来源 | `web/toolkit.css` 保持为可读镜像 |
+| `web/shared/tooltip.js` | 通用节点悬停介绍卡片引擎与互斥隔离 | `web/tooltip.css`、每节点 controller |
+| `web/tooltip.css` | 独立悬停介绍卡片样式文件（备用定制卡片） | `web/shared/tooltip.js`、`web/nodes/smart-video-splitter.js` |
 | `tests/test_prompt_toolkit.py` | 解析、路径、节点契约和行为回归 | 任何用户可见行为或公共契约变更 |
+| `tests/test_smart_video_splitter.py` | 视频分割契约、算法、精确切片、缓存隔离与音频容错回归 | 视频分割功能变更 |
+| `tests/test_shared_tooltip.py` | 通用 Tooltip 引擎接口、Python 字符串解析与实例隔离回归 | Tooltip 引擎变更 |
 | `README.md` | 用户安装、节点和配置格式 | 只记录实际支持的用户行为 |
 | `CHANGELOG.md` | 用户可见版本历史 | 用户可见变更和版本号同步 |
 | `skills/comfyui-plugin-development/` | 通用 ComfyUI 插件开发、项目建档、最小入口生成和验证流程 | 修改技能后运行 skill 校验及对应脚本测试 |
@@ -130,6 +142,19 @@ validation_configured_at: 2026-09-19T17:11:37.321065+08:00
 | 持久状态 | `editor_state` 保存所选模型、各模型所选配置和未保存正负提示词草稿；不包含绝对路径 |
 | 前端 | `web/nodes/prompt-config-editor.js`；controller 为 `__xhPromptConfigEditor`，异步扫描使用 `refreshSequence` |
 
+### `XH_SmartVideoSplitter`
+
+| 项 | 值 |
+| --- | --- |
+| 实现/显示名 | `nodes/smart_video_splitter.py::SmartVideoSplitter` / `智能视频分割器` |
+| 分类/函数 | `xiheha-工具箱/视频` / `process` |
+| 必选输入（全部为 Widget，无连线端口） | `video`: 视频选择；`force_rate`: FLOAT，默认 0；`custom_width`: INT，默认 0；`custom_height`: INT，默认 540；`format`: 格式选择；`split_mode`: 模糊/精确；`fuzzy_min`: 最短时长；`target_duration`: 目标时长；`fuzzy_max`: 最长时长；`algorithm`: 算法；`sensitivity`: 灵敏度；`cut_threshold`: 切镜阈值；`peak_prominence`: 峰值显著度 |
+| 隐藏输入 | `unique_id`: `UNIQUE_ID`；`splitter_state`: `STRING` |
+| 输出（顺序固定） | `SMART_VIDEO_STREAM`/`视频流`；`AUDIO`/`音频`；`INT`/`帧数` |
+| 行为 | 模糊模式下在 [MIN, MAX] 窗口逐帧计算候选切点并根据局部显著峰值与动态阈值挑选最优切点，尾段回溯优化；精确模式下按帧固定间隔硬切分；生成独立缓存目录并在其内生成片段与 manifest.json |
+| 持久状态 | `splitter_state` 记录分段模式、最短、目标与最长时长，工作流载入时无损还原 |
+| 前端 | `web/nodes/smart-video-splitter.js`；controller 为 `__xhSplitter`，提供并排上传与计算按钮、3.0~15.0s 时间轴控件及参数显隐控制 |
+
 ## Custom data and persisted state
 
 ### `XH_SOURCE`
@@ -178,13 +203,71 @@ TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支�
 
 编辑器保存已有 sidecar 时沿用原文件路径和扩展名；没有 sidecar 时创建 `模型名.txt`。当前保存策略是**规范化重写**，不是无损局部更新：TXT 重写为 `正向/负向` 加编号标签，JSON 重写为同名键的顶层对象；未知字段、未识别文本、原键顺序、BOM、原换行风格和末尾空白不保证保留。涉及用户原文件时，不得把“原路径写回”描述成“内容无损”。
 
+### `SMART_VIDEO_STREAM`
+
+唯一规范结构：
+
+```json
+{
+  "version": 1,
+  "split_mode": "fuzzy",
+  "source": {
+    "path": "...",
+    "filename": "example.mp4",
+    "fps": 30.0,
+    "effective_fps": 30.0,
+    "width": 1920,
+    "height": 1080,
+    "duration": 42.37,
+    "frame_count": 1271
+  },
+  "output": {
+    "width": 960,
+    "height": 540,
+    "fps": 30.0,
+    "model_format": "AnimatedDiff"
+  },
+  "settings": {
+    "split_mode": "fuzzy",
+    "min_duration": 4.0,
+    "target_duration": 5.0,
+    "max_duration": 6.0,
+    "algorithm": "smart_mix",
+    "sensitivity": 0.60,
+    "cut_threshold": 0.55,
+    "peak_prominence": 0.12,
+    "strong_cut_threshold": 0.75
+  },
+  "cache_dir": ".../temp/intelligent_video_splitter/node_xxx",
+  "segments": [
+    {
+      "index": 0,
+      "path": ".../segment_0001.mp4",
+      "filename": "segment_0001.mp4",
+      "start_time": 0.0,
+      "end_time": 4.73,
+      "duration": 4.73,
+      "start_frame": 0,
+      "end_frame": 142,
+      "frame_count": 142,
+      "cut_score": 0.87,
+      "cut_type": "scene",
+      "constraint_warning": false
+    }
+  ]
+}
+```
+
+- 不包含图像 Tensor，仅传递轻量元数据与切片文件路径。
+- 同步在节点专属缓存目录下写入 `manifest.json`。
+
 ## Frontend integration
 
 - `web/xiheha_toolkit.js` 是唯一允许调用 `app.registerExtension` 的入口。
-- 节点模块映射：`stack-source.js`、`model-source.js`、`prompt-selector.js`、`prompt-preview.js`、`prompt-merger.js`、`prompt-display.js`、`prompt-config-editor.js`。
+- 节点模块映射：`stack-source.js`、`model-source.js`、`prompt-selector.js`、`prompt-preview.js`、`prompt-merger.js`、`prompt-display.js`、`prompt-config-editor.js`、`smart-video-splitter.js`。
 - 单向依赖目标：常量/样式 → 共享 DOM/API/上游 → 节点模块 → 入口。避免节点模块循环依赖。
 - `web/shared/constants.js::PORT_LABELS` 是 Python 端口显示名的前端镜像；输出数组索引必须与 Python 槽位一致。
-- selector/preview/merger/display 的 DOM 区域最小尺寸当前为 400×300；config editor 为 520×370，滚动 widget 最小内容高度 280。
+- selector/preview/merger/display 的 DOM 区域最小尺寸当前为 400×300；config editor 为 520×370，滚动 widget 最小内容高度 280；smart video splitter 为自适应高度（最小 340）。
 - 运行时样式来自 `web/shared/styles.js::TOOLKIT_STYLES`；`web/toolkit.css` 是同步维护的可读参考。
 - 执行 UI payload key 只有 `xh_rows` 和 `xh_ports`；前端通过 `parseUiPayload` 读取数组第一个 JSON 值。
 
@@ -204,6 +287,9 @@ TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支�
 
 - `POST /xiheha_toolkit/inspect`：只读扫描配置。
 - `POST /xiheha_toolkit/save`：保存一个或多个来源的完整配置列表。
+- `GET /xiheha_toolkit/video_info`：获取输入视频时长、分辨率、FPS 及帧数元数据。
+- `GET /xiheha_toolkit/split_status`：查询节点当前切分或分析进度。
+- `POST /xiheha_toolkit/split_video`：触发视频分析与多片段切割任务。
 
 请求：
 

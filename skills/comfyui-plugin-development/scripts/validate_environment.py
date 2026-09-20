@@ -73,6 +73,14 @@ def inspect(plugin_root: Path, comfy_root: Path | None = None) -> dict[str, obje
         "working_directory": str(plugin_root),
         "environment": {"PYTHONPATH": str(comfy_root)},
         "unittest": f'"{python}" -m unittest discover -s tests',
+        "unittest_wrapper": (
+            f'"{python}" <skill-dir>/scripts/run_plugin_tests.py '
+            f'--root "{plugin_root}" --comfy-root "{comfy_root}"'
+        ),
+        "frontend_syntax": (
+            f'"{python}" <skill-dir>/scripts/check_frontend_syntax.py '
+            f'--root "{plugin_root}"'
+        ),
         "controlled_import": (
             f'"{python}" <skill-dir>/scripts/check_plugin_import.py '
             f'--root "{plugin_root}" --comfy-root "{comfy_root}"'

@@ -13,28 +13,7 @@ For `medium` and `careful`, make a compact internal plan before editing:
 
 For `simple`, let the model select high-signal checks without producing the table unless a risk floor applies.
 
-## Execution preflight
-
-Before the first formal validation attempt, copy the interpreter, working directory, environment variables, and commands from `COMFYUI_PLUGIN_PROJECT.md` exactly. Do not improvise a command and correct it later when the profile already supplies one.
-
-When paths or imports are uncertain, run:
-
-```text
-python <skill-dir>/scripts/validate_environment.py \
-  --root <plugin-root> [--comfy-root <comfy-root>]
-```
-
-For a standard `<ComfyUI>/custom_nodes/<plugin>` layout, omit `--comfy-root`; the helper resolves it upward. Pass it only for a nonstandard layout or to override detection. `--plugin-root` remains a compatibility alias for `--root`.
-
-Verify:
-
-- the actual Python executable;
-- plugin and ComfyUI roots;
-- `folder_paths` resolves from the intended ComfyUI root rather than a conflicting local module;
-- the plugin parent and test working directory are correct;
-- the recommended test environment/command is recorded before execution.
-
-Use the project-specific command even when the helper suggests a generic fallback. If a formal command fails because the preflight was ignored or incomplete, report that failed attempt later.
+When validation requires environment diagnosis, a portable unittest wrapper, explicit ESM parsing, or controlled plugin import, read [validation-tooling.md](validation-tooling.md). Do not load that tool reference for a documentation-only change or a simple check whose exact project command is already known.
 
 ## Automated evidence by level
 
@@ -42,7 +21,7 @@ Always review current source, working-tree status, changed identifiers, and the 
 
 ### Simple
 
-- changed-file Python compilation or frontend syntax checks;
+- changed-file Python compilation or explicit-ESM frontend syntax checks;
 - directly relevant focused regression tests when present;
 - `git diff --check` or equivalent;
 - risk-floor checks only where the change demands them.
@@ -64,15 +43,6 @@ The model may skip the full suite, controlled import, repository-wide syntax sca
 - all relevant boundary, malformed-input, compatibility, concurrency, and persistence cases;
 - full applicable manual path when safe and available.
 
-For a controlled import, use:
-
-```text
-python <skill-dir>/scripts/check_plugin_import.py \
-  --root <plugin-root> [--comfy-root <comfy-root>]
-```
-
-It verifies mappings, display mappings, `WEB_DIRECTORY`, route registration, and repeated import behavior with a controlled `PromptServer.instance`. Label it **controlled import**, never real ComfyUI startup.
-
 ## Risk-specific evidence
 
 | Area | Evidence floor |
@@ -82,6 +52,7 @@ It verifies mappings, display mappings, `WEB_DIRECTORY`, route registration, and
 | Existing/batch files | Chosen preservation and transaction policies, unknown-content round trip, failure after a partial write, retry/conflict behavior |
 | Filesystem/sidecar | Allowed roots, nested/missing/malformed files, traversal and absolute-path rejection |
 | Frontend state | Pure-function tests for persistence/dirty/save transitions where practical; syntax alone is insufficient |
+| Frontend module split | Explicit ESM parse, moved-symbol ownership search, entry-point import/patch smoke check |
 | Async preview/save | Rapid changes proving stale completion cannot win or clear newer edits |
 | External plugin | Installed compatible version and real connection, or explicitly not run |
 | Route | Malformed JSON, wrong types, limits, valid request, per-item errors, no sensitive-path leakage |
@@ -106,6 +77,7 @@ Before restarting or refreshing ComfyUI, check for an unsaved workflow, active q
 Use these categories:
 
 - **Passed** — exact command/check and result.
+- **Partial evidence** — the check succeeded within a named limited scope, but the registration/runtime path was not fully exercised.
 - **Failed: implementation** — still failing because of the code.
 - **Failed then corrected: environment/invocation** — include every material formal command that failed before a later pass and explain why.
 - **Not run** — check and missing prerequisite/blocker.

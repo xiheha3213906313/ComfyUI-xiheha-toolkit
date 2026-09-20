@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.0 - 2026-09-20
+
+- 新增「智能视频分割器」节点（`XH_SmartVideoSplitter`）：支持模糊分段与精确分段、场景变化检测（智能混合/光流/帧差/阈值判断）、目标时长窗口筛选、尾段回溯优化及多片段切片输出。
+- 新增视频后端接口：`/xiheha_toolkit/video_info`（元数据探测）、`/xiheha_toolkit/split_status`（切分进度状态）与 `/xiheha_toolkit/split_video`（切分任务触发）。
+- 新增轻量通用悬停卡片引擎 `web/shared/tooltip.js`，支持全局互斥、智能对齐与自适应定位。
+- 前端集成智能视频分割器控制器 `web/nodes/smart-video-splitter.js` 与时长滑条交互控件。
+- 完善 ComfyUI 插件开发技能规范与自动化校验工具链（支持环境校验、测试运行、前端 ESM 语法检查与导入验证）。
+
 ## 0.7.0 - 2026-09-19
 
 - 「编辑提示词配置」节点在保存按钮左侧新增「删除」按钮，支持删除当前选中的配置项或清空新增草稿。

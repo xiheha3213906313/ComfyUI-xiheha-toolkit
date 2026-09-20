@@ -7,9 +7,10 @@ from .nodes.prompt_preview import PromptPreview
 from .nodes.prompt_merge import PromptMerger
 from .nodes.prompt_display import PromptDisplay
 from .nodes.prompt_config_editor import PromptConfigEditor
+from .nodes.smart_video_splitter import SmartVideoSplitter
 from .server import register_routes
 
-__version__ = "0.7.0"
+__version__ = "0.8.0"
 
 NODE_CLASS_MAPPINGS = {
     "XH_StackSource": StackSource,
@@ -19,6 +20,7 @@ NODE_CLASS_MAPPINGS = {
     "XH_PromptMerger": PromptMerger,
     "XH_PromptDisplay": PromptDisplay,
     "XH_PromptConfigEditor": PromptConfigEditor,
+    "XH_SmartVideoSplitter": SmartVideoSplitter,
 }
 
 NODE_DISPLAY_NAME_MAPPINGS = {
@@ -29,6 +31,7 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     "XH_PromptMerger": "提示词合并",
     "XH_PromptDisplay": "显示提示词",
     "XH_PromptConfigEditor": "编辑提示词配置",
+    "XH_SmartVideoSplitter": "智能视频分割器",
 }
 
 WEB_DIRECTORY = "./web"

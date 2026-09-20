@@ -29,7 +29,7 @@ The canonical file is `COMFYUI_PLUGIN_PROJECT.md` at the plugin root.
 
 During initial profile creation, ask the user to choose `simple`, `medium`, or `careful` using the descriptions in [validation-strategies.md](validation-strategies.md). Recommend `medium` if the user has no preference. This question may be combined with the parse-consent question to avoid an extra round trip.
 
-Record the selection, exact current model label or identifier exposed by the host/runtime/user, and current local timestamp in the profile frontmatter. If it is unavailable, record `unknown` and disclose that automatic model-mismatch detection will be unavailable until a known model updates the setting. A declined profile still records the validation configuration.
+Record the selection, exact current model label or identifier, current coding-agent host name, and current local timestamp in the profile frontmatter. Pass the model and agent to `set_validation_strategy.py` with `--model` and `--agent`. If either identity is unavailable, record `unknown`; an unknown model disables automatic model-mismatch detection, while an unknown agent forces live tool discovery. A declined profile still records this configuration.
 
 ### Missing or invalid profile
 
@@ -66,7 +66,8 @@ declined_at: 2026-01-01T12:00:00+08:00
 remind_after: 2026-01-04T12:00:00+08:00
 analysis_scope: none
 validation_level: medium
-validation_model: exact-host-model-label-or-id
+validation_model: "exact-host-model-label-or-id"
+validation_agent: "Codex"
 validation_configured_at: 2026-01-01T12:00:00+08:00
 ---
 ```

@@ -17,6 +17,12 @@ export function applyPortLabels(node) {
         const output = node.outputs?.[index];
         if (output && label) output.label = label;
     }
+    if (labels.widgets) {
+        for (const widget of node.widgets || []) {
+            const label = labels.widgets[widget.name];
+            if (label) widget.label = label;
+        }
+    }
 }
 
 export function enforceNodeMinimumSize(node, width, height) {
@@ -149,9 +155,34 @@ export function hideWidget(widget) {
     if (!widget || widget.__xhHidden) return;
     widget.__xhHidden = true;
     widget.hidden = true;
-    const originalComputeSize = widget.computeSize;
-    widget.computeSize = () => [0, 0];
-    widget.__xhOriginalComputeSize = originalComputeSize;
+    if (widget.element) widget.element.hidden = true;
+    if (widget.__xhOriginalType === undefined) {
+        widget.__xhOriginalType = widget.type;
+    }
+    if (widget.__xhOriginalComputeSize === undefined) {
+        widget.__xhOriginalComputeSize = widget.computeSize;
+        widget.__xhHasComputeSize = Object.prototype.hasOwnProperty.call(widget, "computeSize");
+    }
+    widget.type = "hidden";
+    widget.computeSize = () => [0, -4];
+}
+
+export function showWidget(widget) {
+    if (!widget || !widget.__xhHidden) return;
+    widget.__xhHidden = false;
+    widget.hidden = false;
+    if (widget.element) widget.element.hidden = false;
+    if (widget.__xhOriginalType !== undefined) {
+        widget.type = widget.__xhOriginalType;
+        delete widget.__xhOriginalType;
+    }
+    if (widget.__xhHasComputeSize && widget.__xhOriginalComputeSize) {
+        widget.computeSize = widget.__xhOriginalComputeSize;
+    } else {
+        delete widget.computeSize;
+    }
+    delete widget.__xhOriginalComputeSize;
+    delete widget.__xhHasComputeSize;
 }
 
 export function installStyles() {

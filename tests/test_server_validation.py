@@ -25,6 +25,13 @@ class _Routes:
 
         return decorator
 
+    def get(self, path):
+        def decorator(handler):
+            self.handlers[path] = handler
+            return handler
+
+        return decorator
+
 
 def _load_server_module():
     package = types.ModuleType(PACKAGE_NAME)
@@ -109,7 +116,16 @@ class ServerValidationTests(unittest.TestCase):
     def test_route_registration_is_idempotent(self):
         SERVER_MODULE.register_routes()
         SERVER_MODULE.register_routes()
-        self.assertEqual(set(ROUTES.handlers), {"/xiheha_toolkit/inspect", "/xiheha_toolkit/save"})
+        self.assertEqual(
+            set(ROUTES.handlers),
+            {
+                "/xiheha_toolkit/inspect",
+                "/xiheha_toolkit/save",
+                "/xiheha_toolkit/video_info",
+                "/xiheha_toolkit/split_status",
+                "/xiheha_toolkit/split_video",
+            },
+        )
 
     def test_save_route_rejects_malformed_json(self):
         SERVER_MODULE.register_routes()

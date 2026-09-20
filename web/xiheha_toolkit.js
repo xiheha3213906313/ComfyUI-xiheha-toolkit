@@ -15,9 +15,19 @@ import * as promptPreview from "./nodes/prompt-preview.js";
 import * as promptMerger from "./nodes/prompt-merger.js";
 import * as promptDisplay from "./nodes/prompt-display.js";
 import * as promptConfigEditor from "./nodes/prompt-config-editor.js";
+import * as smartVideoSplitter from "./nodes/smart-video-splitter.js";
 
 // node ID -> beforeRegisterNodeDef patch. Order is irrelevant.
-const NODE_MODULES = [stackSource, modelSource, promptSelector, promptPreview, promptMerger, promptDisplay, promptConfigEditor];
+const NODE_MODULES = [
+    stackSource,
+    modelSource,
+    promptSelector,
+    promptPreview,
+    promptMerger,
+    promptDisplay,
+    promptConfigEditor,
+    smartVideoSplitter,
+];
 const NODE_PATCHES = Object.fromEntries(NODE_MODULES.map((mod) => [mod.NODE_ID, mod.patch]));
 
 app.registerExtension({

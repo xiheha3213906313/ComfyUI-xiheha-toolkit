@@ -59,25 +59,38 @@ def infer_comfy_root(plugin_root: Path) -> Path | None:
     return None
 
 
-def _registration_summary(module: ModuleType) -> tuple[str, dict[str, object]]:
+def _registration_summary(module: ModuleType) -> tuple[str, dict[str, object], bool]:
     mappings = getattr(module, "NODE_CLASS_MAPPINGS", None)
     node_list = getattr(module, "NODE_LIST", None)
     entrypoint = getattr(module, "comfy_entrypoint", None)
     if isinstance(mappings, dict):
+        invalid_ids = [key for key in mappings if not isinstance(key, str) or not key]
+        if invalid_ids:
+            raise TypeError("NODE_CLASS_MAPPINGS keys must be non-empty strings")
+        non_callable = sorted(key for key, value in mappings.items() if not callable(value))
+        if non_callable:
+            raise TypeError(f"NODE_CLASS_MAPPINGS values must be callable: {non_callable}")
         display = getattr(module, "NODE_DISPLAY_NAME_MAPPINGS", None)
         if display is not None and not isinstance(display, dict):
             raise TypeError("NODE_DISPLAY_NAME_MAPPINGS must be a dict when present")
         unknown_display = sorted(set(display or {}) - set(mappings))
         if unknown_display:
             raise ValueError(f"display mappings contain unknown node IDs: {unknown_display}")
+        invalid_display = sorted(key for key, value in (display or {}).items() if not isinstance(value, str))
+        if invalid_display:
+            raise TypeError(f"display mapping values must be strings: {invalid_display}")
         return "classic", {
             "node_ids": sorted(str(key) for key in mappings),
             "display_mapping_present": isinstance(display, dict),
-        }
+            "mapping_values_callable": True,
+        }, True
     if node_list is not None:
-        return "node-list", {"node_list_type": type(node_list).__name__}
+        return "node-list", {"node_list_type": type(node_list).__name__}, False
     if callable(entrypoint):
-        return "entrypoint", {"entrypoint": getattr(entrypoint, "__name__", "comfy_entrypoint")}
+        return "entrypoint", {
+            "entrypoint": getattr(entrypoint, "__name__", "comfy_entrypoint"),
+            "invoked": False,
+        }, False
     raise ValueError("no supported node registration surface found")
 
 
@@ -109,6 +122,7 @@ def check(plugin_root: Path, comfy_root: Path | None = None) -> dict[str, object
     original_instance: Any = None
     captured_stdout = io.StringIO()
     captured_stderr = io.StringIO()
+    phase = "prepare-import-environment"
     try:
         excluded = {plugin_root, plugin_root.parent}
         remainder = []
@@ -119,6 +133,7 @@ def check(plugin_root: Path, comfy_root: Path | None = None) -> dict[str, object
         sys.path[:] = [str(comfy_root), str(plugin_root.parent), *remainder]
         importlib.invalidate_caches()
         with contextlib.redirect_stdout(captured_stdout), contextlib.redirect_stderr(captured_stderr):
+            phase = "import-comfy-server"
             server_module = importlib.import_module("server")
             server_origin = Path(server_module.__file__).resolve() if getattr(server_module, "__file__", None) else None
             if server_origin is None or not _inside(server_origin, comfy_root):
@@ -139,34 +154,71 @@ def check(plugin_root: Path, comfy_root: Path | None = None) -> dict[str, object
                 raise ImportError("could not create plugin import spec")
             module = importlib.util.module_from_spec(spec)
             sys.modules[module_name] = module
+            phase = "import-plugin-root"
             spec.loader.exec_module(module)
-            style, registration = _registration_summary(module)
+            phase = "inspect-registration"
+            style, registration, registration_fully_checked = _registration_summary(module)
             first_routes = list(stub.routes.registrations)
 
+            phase = "reexecute-plugin-root"
             spec.loader.exec_module(module)
             second_routes = list(stub.routes.registrations)
         if second_routes != first_routes:
-            raise RuntimeError("repeated controlled import registered duplicate routes")
+            raise RuntimeError("re-executing the plugin root registered duplicate routes")
 
+        phase = "inspect-web-directory"
         web_directory = getattr(module, "WEB_DIRECTORY", None)
         if web_directory is not None and not isinstance(web_directory, str):
             raise TypeError("WEB_DIRECTORY must be a string when present")
+        web_directory_path: Path | None = None
+        if web_directory is not None:
+            declared_path = Path(web_directory)
+            web_directory_path = (
+                declared_path.resolve()
+                if declared_path.is_absolute()
+                else (plugin_root / declared_path).resolve()
+            )
+            if not web_directory_path.is_dir():
+                raise ValueError(f"WEB_DIRECTORY does not exist: {web_directory}")
+        route_stable = second_routes == first_routes
         result.update(
             {
-                "status": "passed",
+                "status": "passed" if registration_fully_checked else "partial",
                 "server_module": str(server_origin),
                 "registration_style": style,
                 "registration": registration,
                 "web_directory": web_directory,
+                "web_directory_path": str(web_directory_path) if web_directory_path else None,
+                "web_directory_exists": web_directory_path is None or web_directory_path.is_dir(),
                 "routes": first_routes,
-                "repeat_import_idempotent": True,
+                "repeat_execution_route_stable": route_stable,
+                "evidence_scope": (
+                    "classic-registration-structure"
+                    if registration_fully_checked
+                    else "registration-surface-only"
+                ),
+                "limitations": (
+                    []
+                    if registration_fully_checked
+                    else [
+                        "NODE_LIST/comfy_entrypoint contents were not evaluated",
+                        "registration requires a real compatible ComfyUI runtime check",
+                    ]
+                ),
                 "captured_stdout": captured_stdout.getvalue(),
                 "captured_stderr": captured_stderr.getvalue(),
             }
         )
         return result
     except Exception as exc:  # The CLI returns concise controlled-import evidence.
-        return {**result, "status": "error", "error": f"{type(exc).__name__}: {exc}"}
+        return {
+            **result,
+            "status": "error",
+            "phase": phase,
+            "error": f"{type(exc).__name__}: {exc}",
+            "captured_stdout": captured_stdout.getvalue(),
+            "captured_stderr": captured_stderr.getvalue(),
+        }
     finally:
         if server_module is not None and hasattr(server_module, "PromptServer"):
             server_module.PromptServer.instance = original_instance
@@ -197,7 +249,7 @@ def main() -> int:
     args = parser.parse_args()
     result = check(args.plugin_root, args.comfy_root)
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0 if result["status"] == "passed" else 1
+    return 0 if result["status"] in {"passed", "partial"} else 1
 
 
 if __name__ == "__main__":

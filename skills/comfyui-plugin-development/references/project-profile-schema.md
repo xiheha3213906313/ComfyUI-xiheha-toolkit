@@ -14,7 +14,8 @@ declined_at: null
 remind_after: null
 analysis_scope: full-static
 validation_level: medium
-validation_model: exact-host-model-label-or-id
+validation_model: "exact-host-model-label-or-id"
+validation_agent: "Codex"
 validation_configured_at: 2026-01-01T12:00:00+08:00
 ---
 ```
@@ -27,7 +28,7 @@ Allowed `profile_status` values:
 
 Dates must be ISO-8601 with timezone. Use YAML `null`, not empty strings, for inapplicable values.
 
-`validation_level` must be `simple`, `medium`, or `careful`. `validation_model` is the exact model label or identifier exposed by the current host/runtime/system context or explicitly supplied by the user when the level was chosen; a user-visible model selector label is valid. Use `unknown` only when no trustworthy value exists. During initialization, explain all three levels and ask the user before setting them. See `validation-strategies.md`.
+`validation_level` must be `simple`, `medium`, or `careful`. `validation_model` is the exact model label or identifier exposed by the current host/runtime/system context or explicitly supplied by the user when the level was chosen; a user-visible model selector label is valid. `validation_agent` is the coding host/environment name used only to select a preferred structured question tool. Use `unknown` when either identity is unavailable. New or updated profiles record `validation_agent`; older v1 profiles without it remain readable and fall back to live tool discovery. During initialization, explain all three levels and ask the user before setting them. See `validation-strategies.md`.
 
 ## Required sections for complete or partial profiles
 
@@ -59,9 +60,11 @@ Use these headings and omit a table only when the plugin truly lacks that surfac
 10. `## Documentation and release bookkeeping`
     - User docs, changelog, version sources, examples, and when each must change.
 11. `## Unknowns and unverified items`
-    - Runtime, browser, GPU, optional dependency, or platform checks not actually performed.
+   - Runtime, browser, GPU, optional dependency, or platform checks not actually performed.
 12. `## Profile maintenance rules`
-    - Which structural changes require updating this file.
+   - Which structural changes require updating this file.
+
+An optional `## UI and design rules` section may record durable, project-specific conventions explicitly established by the user, existing design documentation, or consistently enforced source. Examples include localization policy, button/icon style, status replacement semantics, minimum layout constraints, and permitted customization boundaries. Do not infer personal preferences from one implementation or promote them into universal ComfyUI rules.
 
 ## Quality rules
 
