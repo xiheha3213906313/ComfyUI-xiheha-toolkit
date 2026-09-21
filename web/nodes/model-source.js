@@ -1,6 +1,6 @@
 // XH_ModelSource — pass-through adapter for a core ComfyUI MODEL.
 import { MODEL_SOURCE_NODE } from "../shared/constants.js";
-import { applyPortLabels } from "../shared/dom.js";
+import { applyPortLabels } from "../shared/widgets.js";
 import { notifySelectorsForSourceChange } from "../shared/upstream.js";
 
 export const NODE_ID = MODEL_SOURCE_NODE;

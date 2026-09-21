@@ -10,40 +10,26 @@ import {
     createRoot,
     configureScrollableWidget,
     scrollWidgetOptions,
+} from "../shared/layout.js";
+import {
     hideWidget,
     widgetByName,
     widgetValue,
-    markDirty,
-    connectedNode,
-    graphNodes,
-    nodeTypeId,
     applyPortLabels,
-    parseUiPayload,
+} from "../shared/widgets.js";
+import { connectedNode, graphNodes, nodeTypeId } from "../shared/graph.js";
+import { markDirty } from "../shared/workflow.js";
+import { parseUiPayload } from "../shared/payload.js";
+import {
     notifyPromptDisplays,
-} from "../shared/dom.js";
+    previewHasAllInputsFrom,
+    rowToPreviewRow,
+    selectorRowsFromInfos,
+} from "../shared/prompt-flow.js";
 import { inspectSources } from "../shared/api.js";
 import { collectSourceEntries } from "../shared/upstream.js";
-import { rowToPreviewRow, previewHasAllInputsFrom } from "./prompt-preview.js";
 
 export const NODE_ID = SELECTOR_NODE;
-
-function sourceRowsFromInfos(infos, state) {
-    return infos
-        .map((info) => {
-            const selected = state[info.source_name];
-            if (selected == null) return null;
-            const config = info.configs?.find((item) => Number(item.index) === Number(selected));
-            if (!config) return null;
-            return {
-                source_name: info.source_name,
-                display_name: info.display_name,
-                config_index: Number(config.index),
-                positive: String(config.positive || ""),
-                negative: String(config.negative || ""),
-            };
-        })
-        .filter(Boolean);
-}
 
 function selectorController(node) {
     if (node.__xhSelector) return node.__xhSelector;
@@ -89,10 +75,10 @@ function selectorController(node) {
         },
         getRows() {
             if (this.runtimeRows) return this.runtimeRows;
-            return sourceRowsFromInfos(this.infos, this.state);
+            return selectorRowsFromInfos(this.infos, this.state);
         },
         publish() {
-            this.runtimeRows = sourceRowsFromInfos(this.infos, this.state);
+            this.runtimeRows = selectorRowsFromInfos(this.infos, this.state);
             for (const target of graphNodes()) {
                 if (nodeTypeId(target) !== PREVIEW_NODE) continue;
                 const connected = PREVIEW_INPUTS.some((name) => connectedNode(target, name) === node);

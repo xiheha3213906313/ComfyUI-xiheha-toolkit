@@ -1,87 +1,60 @@
-# Unit and integration tests for web/shared/tooltip.js
-import os
+"""Runtime-backed tests for the split Tooltip parser and stylesheet layout."""
+
+from __future__ import annotations
+
+import shutil
+import subprocess
 import unittest
-import re
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 class TestSharedTooltipModule(unittest.TestCase):
-    """Verify generic shared tooltip engine, Python string parser, and strict node isolation."""
-
-    def setUp(self):
-        self.tooltip_js_path = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "web", "shared", "tooltip.js")
+    def test_tooltip_parser_module_executes_and_escapes_content(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node.js is required for Tooltip module tests")
+        uri = (ROOT / "web" / "shared" / "tooltip" / "data.js").as_uri()
+        script = f"""
+            import {{ parseTooltipString, renderTooltipContent, resolveTooltipData }} from {uri!r};
+            const parsed = parseTooltipString('【镜头检测】\\n说明\\n• 阈值：0.5', 'fallback');
+            if (parsed.title !== '镜头检测' || parsed.desc !== '说明' || parsed.details[0] !== '阈值：0.5') throw new Error('parse failed');
+            const resolved = resolveTooltipData({{ name: 'format', tooltip: '[格式]\\n原生说明' }});
+            if (resolved.title !== '格式' || resolved.desc !== '原生说明') throw new Error('resolve failed');
+            const html = renderTooltipContent({{ title: '<script>', badge: '参数', desc: '<img>', details: ['<b>bad</b>'] }});
+            if (html.includes('<script>') || html.includes('<img>') || html.includes('<b>bad</b>')) throw new Error('unescaped content');
+        """
+        result = subprocess.run(
+            [node, "--input-type=module", "--eval", script],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
         )
-        self.assertTrue(os.path.isfile(self.tooltip_js_path), "web/shared/tooltip.js must exist")
-        with open(self.tooltip_js_path, "r", encoding="utf-8") as f:
-            self.js_content = f.read()
+        self.assertEqual(result.returncode, 0, result.stderr)
 
-    def test_exports_and_public_api(self):
-        """Verify all required generic APIs are exported."""
-        required_exports = [
-            "export function registerCustomTooltip",
-            "export function unregisterCustomTooltip",
-            "export function updateTooltipMutualExclusion",
-            "export function parseTooltipString",
-            "export function resolveTooltipData",
-            "export function getWidgetAtPos",
-            "export function showTooltip",
-            "export function hideTooltip",
-            "export function ensureGlobalListeners",
-            "export function ensureTooltipStylesheet",
-        ]
-        for item in required_exports:
-            self.assertIn(item, self.js_content, f"Missing export in web/shared/tooltip.js: {item}")
+    def test_runtime_is_instance_scoped_and_facade_is_stable(self):
+        facade = (ROOT / "web" / "shared" / "tooltip.js").read_text(encoding="utf-8")
+        runtime = (ROOT / "web" / "shared" / "tooltip" / "runtime.js").read_text(encoding="utf-8")
+        self.assertIn("registerCustomTooltip", facade)
+        self.assertIn("registeredNodes.get(node)", runtime)
+        self.assertIn("if (!config?.enabled", runtime)
+        self.assertIn("for (const widget of node.widgets)", runtime)
+        self.assertIn("passive: true", runtime)
+        self.assertNotIn("stopPropagation", runtime)
+        self.assertNotIn("preventDefault", runtime)
 
-    def test_python_tooltip_parser_logic(self):
-        """Verify parsing patterns for Python multi-line tooltip strings."""
-        # 1. Bracket extraction
-        self.assertIn("match(/^【(.*?)】/)", self.js_content)
-        self.assertIn("match(/^\\[(.*?)\\]/)", self.js_content)
-
-        # 2. Bullet point handling
-        self.assertIn("startsWith(\"•\")", self.js_content)
-        self.assertIn("startsWith(\"-\")", self.js_content)
-        self.assertIn("startsWith(\"*\")", self.js_content)
-
-        # 3. Colon bolding
-        self.assertIn("indexOf(\"：\")", self.js_content)
-        self.assertIn("<b>", self.js_content)
-
-    def test_strict_isolation_guarantees(self):
-        """Verify that external nodes cannot be intercepted or modified."""
-        # Must check registeredNodes map
-        self.assertIn("registeredNodes.get(node)", self.js_content)
-        self.assertIn("if (!config || !config.enabled)", self.js_content,
-                      "Must immediately return null for unregistered or disabled nodes")
-
-        # Mutual exclusion must be strictly scoped to node.widgets
-        self.assertIn("for (const w of node.widgets)", self.js_content)
-        self.assertIn("w.__xhOrigTooltip", self.js_content)
-        self.assertIn("w.tooltip = null", self.js_content)
-        self.assertIn("w.tooltip = w.__xhOrigTooltip", self.js_content)
-
-        # Passive/capture listeners to not interfere with standard event propagation
-        self.assertIn("passive: true", self.js_content)
-        self.assertNotIn("e.stopPropagation()", self.js_content, "Must never block ComfyUI event propagation")
-        self.assertNotIn("e.preventDefault()", self.js_content, "Must never prevent default ComfyUI behavior")
-
-    def test_dynamic_stylesheet_linkage(self):
-        """Verify lazy loading of standalone web/tooltip.css."""
-        self.assertIn("xh-tooltip-stylesheet", self.js_content)
-        self.assertIn("../tooltip.css", self.js_content)
-
-    def test_smart_video_splitter_delegates_to_shared_tooltip(self):
-        """Verify smart-video-splitter.js uses the shared module while maintaining backward compatibility."""
-        splitter_js_path = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "..", "web", "nodes", "smart-video-splitter.js")
-        )
-        with open(splitter_js_path, "r", encoding="utf-8") as f:
-            splitter_content = f.read()
-
-        self.assertIn('from "../shared/tooltip.js"', splitter_content)
-        self.assertIn("registerCustomTooltip(node", splitter_content)
-        self.assertIn("export const ENABLE_CUSTOM_TOOLTIP = false", splitter_content)
-        self.assertIn("export function applyTooltipMutualExclusion", splitter_content)
+    def test_tooltip_stylesheet_is_lazy_and_separate(self):
+        stylesheets = (ROOT / "web" / "shared" / "stylesheets.js").read_text(encoding="utf-8")
+        manifest = (ROOT / "web" / "toolkit.css").read_text(encoding="utf-8")
+        tooltip_css = ROOT / "web" / "styles" / "tooltip.css"
+        self.assertTrue(tooltip_css.is_file())
+        self.assertIn("xh-tooltip-stylesheet", stylesheets)
+        self.assertIn("../styles/tooltip.css", stylesheets)
+        self.assertNotIn("tooltip.css", manifest)
 
 
 if __name__ == "__main__":

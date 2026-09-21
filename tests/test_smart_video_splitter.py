@@ -128,19 +128,21 @@ class TestSmartVideoSplitterContract(unittest.TestCase):
             self.assertTrue(SmartVideoSplitter.VALIDATE_INPUTS("my_video.mp4"))
 
     def test_splitter_state_includes_video_and_restoration(self):
-        js_path = os.path.join(os.path.dirname(__file__), "..", "web", "nodes", "smart-video-splitter.js")
-        with open(js_path, "r", encoding="utf-8") as f:
-            js_content = f.read()
-
-        # Check syncStateToWidgets writes video to splitter_state
-        self.assertIn('video: videoWidget?.value || ""', js_content)
-
-        # Check controller exposes updateVideoPreviewAndInfo
-        self.assertIn("updateVideoPreviewAndInfo,", js_content)
-
-        # Check onConfigure restores video from stateWidget or videoWidget
-        self.assertIn("if (s.video)", js_content)
-        self.assertIn("this.__xhSplitter?.updateVideoPreviewAndInfo?.(restoredVideo)", js_content)
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node.js is required for the frontend state regression test")
+        module_uri = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "web", "features", "smart-video-splitter", "state.js")
+        ).replace("\\", "/")
+        script = f"""
+            import {{ parseSplitterState, serializeSplitterState }} from 'file:///{module_uri}';
+            const state = parseSplitterState('{{"split_mode":"exact","target_duration":8,"video":"sub/test.mp4"}}');
+            if (state.video !== 'sub/test.mp4' || state.split_mode !== 'exact') throw new Error('state restore failed');
+            const restored = JSON.parse(serializeSplitterState(state));
+            if (restored.video !== 'sub/test.mp4' || restored.target_duration !== 8) throw new Error('state serialization failed');
+        """
+        result = subprocess.run([node, "--input-type=module", "--eval", script], capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 
@@ -268,28 +270,29 @@ class TestNodeCacheIsolation(unittest.TestCase):
         self.assertTrue(dir_b.endswith("node_456"))
 
     def test_clean_only_affects_current_node(self):
-        dir_a = clean_node_cache("test_node_a")
-        dir_b = clean_node_cache("test_node_b")
+        from unittest.mock import patch
 
-        # Create dummy segment files in both
-        file_a = os.path.join(dir_a, "segment_0001.mp4")
-        file_b = os.path.join(dir_b, "segment_0001.mp4")
-        with open(file_a, "w") as f:
-            f.write("a")
-        with open(file_b, "w") as f:
-            f.write("b")
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        with patch.object(folder_paths, "get_temp_directory", return_value=temporary.name):
+            dir_a = clean_node_cache("test_node_a")
+            dir_b = clean_node_cache("test_node_b")
 
-        self.assertTrue(os.path.isfile(file_a))
-        self.assertTrue(os.path.isfile(file_b))
+            # Create dummy segment files in both
+            file_a = os.path.join(dir_a, "segment_0001.mp4")
+            file_b = os.path.join(dir_b, "segment_0001.mp4")
+            with open(file_a, "w") as f:
+                f.write("a")
+            with open(file_b, "w") as f:
+                f.write("b")
 
-        # Re-clean node A: file A must be removed, file B must still exist!
-        clean_node_cache("test_node_a")
-        self.assertFalse(os.path.isfile(file_a))
-        self.assertTrue(os.path.isfile(file_b))
+            self.assertTrue(os.path.isfile(file_a))
+            self.assertTrue(os.path.isfile(file_b))
 
-        # Cleanup
-        shutil.rmtree(dir_a, ignore_errors=True)
-        shutil.rmtree(dir_b, ignore_errors=True)
+            # Re-clean node A: file A must be removed, file B must still exist!
+            clean_node_cache("test_node_a")
+            self.assertFalse(os.path.isfile(file_a))
+            self.assertTrue(os.path.isfile(file_b))
 
 
 class TestAudioFallback(unittest.TestCase):
@@ -307,40 +310,32 @@ class TestFrontendTooltipIntegration(unittest.TestCase):
     """Verify standalone tooltip stylesheet, custom tooltip preservation switch, and native tooltips."""
 
     def test_frontend_tooltip_definitions_and_switch(self):
-        js_path = os.path.join(os.path.dirname(__file__), "..", "web", "nodes", "smart-video-splitter.js")
-        self.assertTrue(os.path.isfile(js_path))
-        with open(js_path, "r", encoding="utf-8") as f:
-            js_content = f.read()
+        from pathlib import Path
 
-        self.assertIn("export const WIDGET_TOOLTIPS", js_content)
-        self.assertIn("export const ENABLE_CUSTOM_TOOLTIP = false", js_content)
-        self.assertIn("setupWidgetTooltips", js_content)
-        self.assertIn("1000", js_content)  # 1-second hover requirement preserved
-
-        for param in ["format", "algorithm", "sensitivity", "cut_threshold", "peak_prominence"]:
-            self.assertIn(f"{param}:", js_content, f"Missing frontend tooltip for {param}")
+        root = Path(__file__).resolve().parents[1]
+        adapter = (root / "web" / "nodes" / "smart-video-splitter.js").read_text(encoding="utf-8")
+        controller = (root / "web" / "features" / "smart-video-splitter" / "controller.js").read_text(encoding="utf-8")
+        self.assertIn("export const ENABLE_CUSTOM_TOOLTIP = false", adapter)
+        self.assertIn("registerCustomTooltip(node", controller)
+        self.assertIn("hoverDelay: 1000", controller)
 
     def test_standalone_tooltip_stylesheet(self):
-        standalone_css_path = os.path.join(os.path.dirname(__file__), "..", "web", "tooltip.css")
+        standalone_css_path = os.path.join(os.path.dirname(__file__), "..", "web", "styles", "tooltip.css")
         main_css_path = os.path.join(os.path.dirname(__file__), "..", "web", "toolkit.css")
-        styles_path = os.path.join(os.path.dirname(__file__), "..", "web", "shared", "styles.js")
 
-        self.assertTrue(os.path.isfile(standalone_css_path), "web/tooltip.css must exist as independent stylesheet")
+        self.assertTrue(os.path.isfile(standalone_css_path), "web/styles/tooltip.css must exist as independent stylesheet")
 
         with open(standalone_css_path, "r", encoding="utf-8") as f:
             tooltip_css = f.read()
         with open(main_css_path, "r", encoding="utf-8") as f:
             main_css = f.read()
-        with open(styles_path, "r", encoding="utf-8") as f:
-            styles_content = f.read()
-
         # Standalone stylesheet has tooltip rules
         self.assertIn(".xh-tooltip", tooltip_css)
         self.assertIn(".xh-tooltip.visible", tooltip_css)
 
-        # Main stylesheets are clean and unpolluted
+        # The style manifest leaves optional Tooltip CSS on-demand.
         self.assertNotIn(".xh-tooltip", main_css)
-        self.assertNotIn(".xh-tooltip", styles_content)
+        self.assertFalse(os.path.exists(os.path.join(os.path.dirname(__file__), "..", "web", "shared", "styles.js")))
 
     def test_python_native_tooltips_multiline(self):
         inputs = SmartVideoSplitter.INPUT_TYPES()
@@ -351,13 +346,14 @@ class TestFrontendTooltipIntegration(unittest.TestCase):
             self.assertTrue(tooltip.startswith("【"), f"{param} tooltip should start with clear section header")
 
     def test_mutual_exclusion_logic_exported_and_isolated(self):
-        js_path = os.path.join(os.path.dirname(__file__), "..", "web", "nodes", "smart-video-splitter.js")
-        with open(js_path, "r", encoding="utf-8") as f:
-            js_content = f.read()
-
-        self.assertIn("export function applyTooltipMutualExclusion", js_content)
-        self.assertIn("WIDGET_TOOLTIPS[w.name]", js_content, "Must guard with whitelist to protect other nodes")
-        self.assertIn("w.__origTooltip", js_content)
+        runtime_path = os.path.join(
+            os.path.dirname(__file__), "..", "web", "shared", "tooltip", "runtime.js"
+        )
+        with open(runtime_path, "r", encoding="utf-8") as f:
+            runtime = f.read()
+        self.assertIn("registeredNodes.get(node)", runtime)
+        self.assertIn("for (const widget of node.widgets)", runtime)
+        self.assertIn("widget.__xhOrigTooltip", runtime)
 
 
 class TestFrontendNodeSizing(unittest.TestCase):
@@ -398,50 +394,19 @@ class TestFrontendVideoStatePersistence(unittest.TestCase):
         if not node:
             self.skipTest("Node.js is required for frontend persistence simulation test")
 
-        script = """
-        const assert = (condition, message) => { if (!condition) throw new Error(message); };
-
-        // Test subfolder URL parsing
-        function buildViewUrl(filename) {
-            const clean = filename.replace(/\\\\/g, "/");
-            const slashIdx = clean.lastIndexOf("/");
-            const subfolder = slashIdx !== -1 ? clean.slice(0, slashIdx) : "";
-            const baseName = slashIdx !== -1 ? clean.slice(slashIdx + 1) : clean;
-            return `/view?filename=${encodeURIComponent(baseName)}&type=input${subfolder ? `&subfolder=${encodeURIComponent(subfolder)}` : ""}`;
-        }
-
-        assert(buildViewUrl("test.mp4") === "/view?filename=test.mp4&type=input", "standard filename failed");
-        assert(buildViewUrl("sub/test.mp4") === "/view?filename=test.mp4&type=input&subfolder=sub", "subfolder failed");
-        assert(buildViewUrl("nested/folder/test.mp4") === "/view?filename=test.mp4&type=input&subfolder=nested%2Ffolder", "nested subfolder failed");
-        assert(buildViewUrl("win\\\\sub\\\\test.mp4") === "/view?filename=test.mp4&type=input&subfolder=win%2Fsub", "windows backslash failed");
-
-        // Test onConfigure restoration simulation
-        const fakeNode = {
-            widgets: [
-                { name: "splitter_state", value: JSON.stringify({ video: "restored.mp4", split_mode: "fuzzy" }) },
-                { name: "video", value: "none", options: { values: ["none", "other.mp4"] } }
-            ]
-        };
-
-        const stateWidget = fakeNode.widgets.find(w => w.name === "splitter_state");
-        const videoWidget = fakeNode.widgets.find(w => w.name === "video");
-        let restoredVideo = "";
-        if (stateWidget?.value) {
-            const s = JSON.parse(stateWidget.value);
-            if (s.video) restoredVideo = s.video;
-        }
-        if (!restoredVideo && videoWidget?.value && videoWidget.value !== "none") {
-            restoredVideo = videoWidget.value;
-        }
-        if (restoredVideo && videoWidget) {
-            if (videoWidget.options?.values && !videoWidget.options.values.includes(restoredVideo)) {
-                videoWidget.options.values.push(restoredVideo);
-            }
-            videoWidget.value = restoredVideo;
-        }
-
-        assert(videoWidget.value === "restored.mp4", "videoWidget.value was not restored from splitter_state");
-        assert(videoWidget.options.values.includes("restored.mp4"), "restored video not pushed to options.values");
+        module_uri = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "..", "web", "features", "smart-video-splitter", "state.js")
+        ).replace("\\", "/")
+        script = f"""
+        import {{ parseSplitterState, videoViewPath }} from 'file:///{module_uri}';
+        const assert = (condition, message) => {{ if (!condition) throw new Error(message); }};
+        assert(videoViewPath('test.mp4') === '/view?filename=test.mp4&type=input', 'standard filename failed');
+        assert(videoViewPath('sub/test.mp4') === '/view?filename=test.mp4&type=input&subfolder=sub', 'subfolder failed');
+        assert(videoViewPath('nested/folder/test.mp4') === '/view?filename=test.mp4&type=input&subfolder=nested%2Ffolder', 'nested subfolder failed');
+        assert(videoViewPath('win\\\\sub\\\\test.mp4') === '/view?filename=test.mp4&type=input&subfolder=win%2Fsub', 'windows path failed');
+        const restored = parseSplitterState(JSON.stringify({{ video: 'restored.mp4', split_mode: 'fuzzy' }}), 'fallback.mp4');
+        assert(restored.video === 'restored.mp4', 'serialized video was not restored');
+        assert(parseSplitterState('{{}}', 'fallback.mp4').video === 'fallback.mp4', 'widget fallback failed');
         """
         result = subprocess.run(
             [node, "--input-type=module", "--eval", script],

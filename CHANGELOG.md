@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.8.3 - 2026-09-21
+
+- 将提示词配置与视频接口从 `server.py` 拆到独立路由模块，路由入口保持幂等，五个 HTTP 路径、方法和请求字段不变。
+- 新增共享视频 pipeline，统一节点执行与前端主动计算的参数校验、尺寸计算、分段、切片和 manifest 复用；节点执行继续复用缓存，前端计算继续主动重算。
+- 视频接口增加容器、枚举、数值范围、节点 ID、绝对路径及目录穿越校验；元数据、进度与切分响应不再返回内部绝对路径或完整执行流。
+- 将提示词配置编辑器和智能视频分割器拆为状态、视图、接口/时间轴与 controller 模块；保存使用不可变请求快照，节点移除时统一清理轮询、文件输入、拖动监听器和 widget callback。
+- 将前端共享能力按 graph、widgets、layout、workflow、payload、prompt-flow、lifecycle 拆分；工作流变更优先使用 ComfyUI `captureCanvasState()`，移除合成鼠标事件。
+- Tooltip 拆为纯解析与 DOM runtime，默认继续使用 ComfyUI 原生 Tooltip，定制卡片按需加载且只保留一处互斥逻辑。
+- 删除运行时 CSS 字符串，`web/toolkit.css` 改为 base、prompt、config-editor、smart-video-splitter 样式清单；Tooltip 样式保持按需加载。
+- 测试改为临时缓存目录并增加真实 ESM 模块、共享 pipeline、缓存复用、路由边界与路径脱敏回归。
+
 ## 0.8.2 - 2026-09-21
 
 - 修复「智能视频分割器」上传或选择视频后，未手动保存工作流刷新网页视频丢失并回退为默认视频的问题。

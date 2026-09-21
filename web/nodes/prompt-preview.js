@@ -1,45 +1,31 @@
 // XH_PromptPreview — token-level enable/disable preview and final prompt formatting.
-import { PREVIEW_NODE, SELECTOR_NODE, PREVIEW_INPUTS } from "../shared/constants.js";
+import { PREVIEW_NODE, SELECTOR_NODE } from "../shared/constants.js";
 import {
     createRoot,
     configureScrollableWidget,
     scrollWidgetOptions,
+} from "../shared/layout.js";
+import {
     hideWidget,
     widgetByName,
     widgetValue,
-    markDirty,
-    connectedNode,
-    isConnected,
-    parseUiPayload,
-    promptTokens,
-    nodeTypeId,
     applyPortLabels,
+} from "../shared/widgets.js";
+import { connectedNode, nodeTypeId } from "../shared/graph.js";
+import { markDirty } from "../shared/workflow.js";
+import { parseUiPayload } from "../shared/payload.js";
+import {
     notifyPromptDisplays,
-} from "../shared/dom.js";
+    previewHasAllInputsFrom,
+    rowToPreviewRow,
+} from "../shared/prompt-flow.js";
 
 export const NODE_ID = PREVIEW_NODE;
 
-// Convert a selector row (or an execution row) into the shape the preview renders.
-export function rowToPreviewRow(row) {
-    const modelName = row.display_name || row.model_name || row.source_name || "";
-    return {
-        display_name: modelName,
-        model_name: modelName,
-        positive_tokens: row.positive_tokens || promptTokens(row.positive),
-        negative_tokens: row.negative_tokens || promptTokens(row.negative),
-        positive_enabled: Array.isArray(row.positive_enabled) ? row.positive_enabled : null,
-        negative_enabled: Array.isArray(row.negative_enabled) ? row.negative_enabled : null,
-    };
-}
+export { rowToPreviewRow, previewHasAllInputsFrom } from "../shared/prompt-flow.js";
 
 function previewTokenKey(modelName, side, index) {
     return `${String(modelName || "").trim()}|${side}|${index}`;
-}
-
-export function previewHasAllInputsFrom(node, source = null) {
-    if (!PREVIEW_INPUTS.every((name) => isConnected(node, name))) return false;
-    if (source == null) return true;
-    return PREVIEW_INPUTS.every((name) => connectedNode(node, name) === source);
 }
 
 function previewController(node) {

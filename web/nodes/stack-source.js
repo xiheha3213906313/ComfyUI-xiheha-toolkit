@@ -1,6 +1,6 @@
 // XH_StackSource — pass-through adapter for an external easy-use LORA_STACK.
 import { STACK_NODE } from "../shared/constants.js";
-import { applyPortLabels } from "../shared/dom.js";
+import { applyPortLabels } from "../shared/widgets.js";
 import { notifySelectorsForSourceChange } from "../shared/upstream.js";
 
 export const NODE_ID = STACK_NODE;

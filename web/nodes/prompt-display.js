@@ -4,14 +4,15 @@ import {
     createRoot,
     configureScrollableWidget,
     scrollWidgetOptions,
+} from "../shared/layout.js";
+import {
     hideWidget,
     widgetByName,
-    connectedOutput,
-    parseUiPayload,
-    promptTokens,
-    nodeTypeId,
     applyPortLabels,
-} from "../shared/dom.js";
+} from "../shared/widgets.js";
+import { connectedOutput, nodeTypeId } from "../shared/graph.js";
+import { parseUiPayload } from "../shared/payload.js";
+import { promptTokens } from "../shared/prompt-flow.js";
 
 export const NODE_ID = DISPLAY_NODE;
 

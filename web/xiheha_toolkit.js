@@ -6,7 +6,7 @@
 // then import it below and add it to NODE_MODULES.
 import { app } from "../../../scripts/app.js";
 import { EASY_USE_STACK_NODE, MODEL_LOADER_SOURCES } from "./shared/constants.js";
-import { graphNodes, nodeTypeId } from "./shared/dom.js";
+import { graphNodes, nodeTypeId } from "./shared/graph.js";
 import { installEasyUseStackObserver, installModelLoaderObserver } from "./shared/upstream.js";
 import * as stackSource from "./nodes/stack-source.js";
 import * as modelSource from "./nodes/model-source.js";

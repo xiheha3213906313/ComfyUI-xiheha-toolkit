@@ -10,10 +10,9 @@ import {
 import {
     graphNodes,
     nodeTypeId,
-    widgetByName,
-    widgetValue,
     connectedNode,
-} from "./dom.js";
+} from "./graph.js";
+import { widgetByName, widgetValue } from "./widgets.js";
 
 function collectEasyUseLocalSources(node) {
     const toggle = widgetValue(node, "toggle", true);

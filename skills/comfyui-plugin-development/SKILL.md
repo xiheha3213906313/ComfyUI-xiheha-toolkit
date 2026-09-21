@@ -54,6 +54,10 @@ Do not silently substitute README files, `AGENTS.md`, memory, or guesses for the
 ## Route the task
 
 - For any code change or review, read [references/change-workflow.md](references/change-workflow.md).
+- When adding a feature/subsystem, expanding a controller, route, node, or
+  shared utility, duplicating a workflow across entry points, or splitting
+  modules, also read
+  [references/architecture-and-modularity.md](references/architecture-and-modularity.md).
 - When adding or changing nodes, inputs, outputs, custom types, list nodes, lazy nodes, execution return values, model/latent data, or registrations, also read [references/node-contracts.md](references/node-contracts.md).
 - When changing JavaScript, TypeScript, widgets, DOM UI, LiteGraph hooks, routes, serialization, previews, or browser/backend payloads, also read [references/frontend-and-api.md](references/frontend-and-api.md).
 - When creating or changing user-facing UI, labels, messages, localization, or

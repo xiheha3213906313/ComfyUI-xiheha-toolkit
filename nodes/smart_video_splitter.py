@@ -2,51 +2,26 @@
 
 from __future__ import annotations
 
-import json
-import os
 from typing import Any
 
-import folder_paths
-
 try:
-    from ..core.scene_detector import split_video_exact, split_video_fuzzy
-    from ..core.video_cutter import (
-        clean_node_cache,
-        cut_and_cache_segments,
-        get_node_cache_dir,
-    )
     from ..core.video_meta import (
         DIMMAX,
         LOAD_FORMATS,
         get_input_video_files,
         get_lazy_audio,
-        get_video_metadata,
-        target_size,
     )
+    from ..core.video_pipeline import VIDEO_ALGORITHMS, VideoSplitOptions, resolve_input_video, run_video_split
 except (ImportError, ValueError):
-    from core.scene_detector import split_video_exact, split_video_fuzzy
-    from core.video_cutter import (
-        clean_node_cache,
-        cut_and_cache_segments,
-        get_node_cache_dir,
-    )
     from core.video_meta import (
         DIMMAX,
         LOAD_FORMATS,
         get_input_video_files,
         get_lazy_audio,
-        get_video_metadata,
-        target_size,
     )
+    from core.video_pipeline import VIDEO_ALGORITHMS, VideoSplitOptions, resolve_input_video, run_video_split
 
-ALGORITHMS = [
-    "智能混合检测（推荐）",
-    "Content 内容变化",
-    "HSV 直方图",
-    "SSIM 结构变化",
-    "Frame Difference 帧差",
-    "Perceptual Hash 感知哈希",
-]
+ALGORITHMS = list(VIDEO_ALGORITHMS)
 
 
 class SmartVideoSplitter:
@@ -157,9 +132,10 @@ class SmartVideoSplitter:
     def VALIDATE_INPUTS(cls, video: str, **kwargs: Any) -> bool | str:
         if not video or video == "none":
             return "请先选择或上传视频文件。"
-        cleaned_video = video.strip().strip('"')
-        if not folder_paths.exists_annotated_filepath(cleaned_video):
-            return f"视频文件不存在: {cleaned_video}"
+        try:
+            resolve_input_video(video)
+        except (ValueError, FileNotFoundError) as exc:
+            return str(exc) or "请先选择或上传视频文件。"
         return True
 
     def process(
@@ -181,99 +157,25 @@ class SmartVideoSplitter:
         splitter_state: str = "{}",
         **kwargs: Any,
     ) -> tuple[dict[str, Any], Any, int]:
-        if not video or video == "none":
-            raise ValueError("请先选择或上传视频文件。")
-
-        cleaned_video = video.strip().strip('"')
-        video_path = folder_paths.get_annotated_filepath(cleaned_video)
-        if not os.path.isfile(video_path):
-            raise FileNotFoundError(f"视频文件不存在: {cleaned_video}")
-
         node_id = str(unique_id) if unique_id is not None else "default"
-        cache_dir = get_node_cache_dir(node_id)
-        manifest_path = os.path.join(cache_dir, "manifest.json")
-
-        meta = get_video_metadata(video_path)
-        effective_fps = float(force_rate) if force_rate > 0 else float(meta["fps"])
-
-        fmt_config = LOAD_FORMATS.get(format, {})
-        downscale_ratio = fmt_config.get("dim", (8,))[0] if "dim" in fmt_config else 8
-        out_w, out_h = target_size(meta["width"], meta["height"], custom_width, custom_height, downscale_ratio)
-
-        # Ensure valid constraint: min <= target <= max
-        f_min = min(float(fuzzy_min), float(target_duration))
-        f_target = float(target_duration)
-        f_max = max(float(fuzzy_max), float(target_duration))
-
-        settings = {
-            "split_mode": split_mode,
-            "min_duration": f_min,
-            "target_duration": f_target,
-            "max_duration": f_max,
-            "algorithm": algorithm,
-            "sensitivity": sensitivity,
-            "cut_threshold": cut_threshold,
-            "peak_prominence": peak_prominence,
-            "strong_cut_threshold": 0.75,
-        }
-
-        # Check whether an existing manifest can be reused
-        stream_data = None
-        if os.path.isfile(manifest_path):
-            try:
-                with open(manifest_path, "r", encoding="utf-8") as f:
-                    cached = json.load(f)
-                src = cached.get("source", {})
-                out = cached.get("output", {})
-                sett = cached.get("settings", {})
-                if (
-                    src.get("path") == video_path
-                    and out.get("width") == out_w
-                    and out.get("height") == out_h
-                    and out.get("fps") == effective_fps
-                    and sett.get("split_mode") == split_mode
-                    and sett.get("target_duration") == f_target
-                    and all(os.path.isfile(s.get("path", "")) for s in cached.get("segments", []))
-                ):
-                    stream_data = cached
-            except Exception:
-                stream_data = None
-
-        if stream_data is None:
-            total_frames = meta["frame_count"]
-            if split_mode == "exact":
-                segments_plan = split_video_exact(
-                    total_frames=total_frames,
-                    effective_fps=effective_fps,
-                    target_duration=f_target,
-                )
-            else:
-                segments_plan = split_video_fuzzy(
-                    video_path=video_path,
-                    total_frames=total_frames,
-                    effective_fps=effective_fps,
-                    min_duration=f_min,
-                    target_duration=f_target,
-                    max_duration=f_max,
-                    algorithm=algorithm,
-                    sensitivity=sensitivity,
-                    cut_threshold=cut_threshold,
-                    peak_prominence=peak_prominence,
-                )
-
-            stream_data = cut_and_cache_segments(
-                node_id=node_id,
-                source_meta=meta,
-                segments_plan=segments_plan,
-                output_w=out_w,
-                output_h=out_h,
-                effective_fps=effective_fps,
-                model_format=format,
-                split_mode=split_mode,
-                settings=settings,
-            )
-
+        _, video_path = resolve_input_video(video)
+        options = VideoSplitOptions.from_mapping(
+            {
+                "force_rate": force_rate,
+                "custom_width": custom_width,
+                "custom_height": custom_height,
+                "format": format,
+                "split_mode": split_mode,
+                "fuzzy_min": fuzzy_min,
+                "target_duration": target_duration,
+                "fuzzy_max": fuzzy_max,
+                "algorithm": algorithm,
+                "sensitivity": sensitivity,
+                "cut_threshold": cut_threshold,
+                "peak_prominence": peak_prominence,
+            }
+        )
+        stream_data, meta = run_video_split(video_path, node_id, options, reuse_manifest=True)
         audio = get_lazy_audio(video_path, start_time=0.0, duration=meta["duration"])
         total_output_frames = sum(s["frame_count"] for s in stream_data.get("segments", []))
-
         return (stream_data, audio, total_output_frames)

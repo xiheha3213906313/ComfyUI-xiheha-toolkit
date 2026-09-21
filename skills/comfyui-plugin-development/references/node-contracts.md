@@ -40,7 +40,12 @@ Never add placeholder inputs or pass-through outputs just for convenient wiring.
 
 - Treat workflow strings and frontend values as untrusted.
 - Use ComfyUI folder registries/resolvers where available.
+- For the same path contract, centralize resolution and containment in one
+  reusable owner used by node, route, task, and preview adapters; do not copy
+  slightly different validation pipelines between entries.
 - Reject unexpected absolute paths and traversal components; verify containment after normalization/resolution.
+- Include symlink behavior in the containment policy where the platform and
+  filesystem can expose it.
 - Do not expose absolute user paths in workflow state, browser payloads, or errors unless the product explicitly requires it.
 - Bound directory scans and file sizes where user-controlled input can trigger work.
 

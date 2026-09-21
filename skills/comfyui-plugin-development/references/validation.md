@@ -106,6 +106,8 @@ later corrected command passes.
 | Async preview/save | Rapid changes proving stale completion cannot win or clear newer edits |
 | External plugin | Installed compatible version and real connection, or explicitly not run |
 | Route | Malformed JSON, wrong types, limits, valid request, per-item errors, no sensitive-path leakage |
+| Architecture/module split | Entry delegates once, shared pipeline behavior matches adapter policies, removed imports are absent, dependency direction remains acyclic, lifecycle disposal is idempotent, and authoritative sources are not duplicated |
+| HTTP/internal DTO split | Response allowlist contains only required fields; internal paths, exception details, and future unlisted fields stay private |
 | Breaking workflow change | User-approved migration plus representative old/new workflow evidence |
 
 ## Manual ComfyUI acceptance

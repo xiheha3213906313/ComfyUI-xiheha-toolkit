@@ -367,25 +367,23 @@ class NodeBehaviorTests(unittest.TestCase):
 class FrontendStyleTests(unittest.TestCase):
     def test_editor_config_dirty_badge_has_transparent_background(self):
         root = Path(__file__).resolve().parents[1]
-        styles_js = (root / "web" / "shared" / "styles.js").read_text(encoding="utf-8")
+        editor_css = (root / "web" / "styles" / "config-editor.css").read_text(encoding="utf-8")
         toolkit_css = (root / "web" / "toolkit.css").read_text(encoding="utf-8")
 
         rule = '.xh-editor-config.dirty::after { content: "*"; position: absolute; top: 0; right: 0; transform: translate(50%, -50%); z-index: 1; padding: 0 1px; color: #ffd166; background: transparent; font-size: 12px; font-weight: 700; line-height: 1; pointer-events: none; }'
-        self.assertIn(rule, styles_js)
-        self.assertIn(rule, toolkit_css)
-        self.assertNotIn("var(--comfy-menu-bg, #353535)", styles_js)
-        self.assertNotIn("var(--comfy-menu-bg, #353535)", toolkit_css)
+        self.assertIn(rule, editor_css)
+        self.assertIn('@import url("./styles/config-editor.css")', toolkit_css)
+        self.assertNotIn("var(--comfy-menu-bg, #353535)", editor_css)
 
     def test_editor_delete_and_dialog_styles_present(self):
         root = Path(__file__).resolve().parents[1]
-        styles_js = (root / "web" / "shared" / "styles.js").read_text(encoding="utf-8")
+        editor_css = (root / "web" / "styles" / "config-editor.css").read_text(encoding="utf-8")
         toolkit_css = (root / "web" / "toolkit.css").read_text(encoding="utf-8")
 
         for token in [".xh-editor-delete", ".xh-dialog-overlay", ".xh-dialog", ".xh-dialog-btn-danger"]:
-            self.assertIn(token, styles_js)
-            self.assertIn(token, toolkit_css)
-        self.assertNotIn("margin-left: auto", styles_js.split(".xh-editor-delete")[1].split("}")[0])
-        self.assertNotIn("margin-left: auto", toolkit_css.split(".xh-editor-delete")[1].split("}")[0])
+            self.assertIn(token, editor_css)
+        self.assertIn('@import url("./styles/config-editor.css")', toolkit_css)
+        self.assertNotIn("margin-left: auto", editor_css.split(".xh-editor-delete")[1].split("}")[0])
 
     def test_version_matches_changelog(self):
         root = Path(__file__).resolve().parents[1]

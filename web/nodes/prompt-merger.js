@@ -4,14 +4,16 @@ import {
     createRoot,
     configureScrollableWidget,
     scrollWidgetOptions,
+} from "../shared/layout.js";
+import {
     hideWidget,
     widgetByName,
     widgetValue,
-    markDirty,
-    isConnected,
-    parseUiPayload,
     applyPortLabels,
-} from "../shared/dom.js";
+} from "../shared/widgets.js";
+import { isConnected } from "../shared/graph.js";
+import { markDirty } from "../shared/workflow.js";
+import { parseUiPayload } from "../shared/payload.js";
 
 export const NODE_ID = MERGE_NODE;
 

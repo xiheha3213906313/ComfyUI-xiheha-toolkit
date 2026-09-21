@@ -6,10 +6,10 @@ analyzed_at: 2026-09-19T14:41:11+08:00
 declined_at: null
 remind_after: null
 analysis_scope: full-static
-validation_level: medium
+validation_level: simple
 validation_model: "Gemini 3.8 Flash (High)"
-validation_configured_at: 2026-09-21T11:51:51.517133+08:00
-validation_agent: "antigravity"
+validation_configured_at: 2026-09-21T14:41:22.178645+08:00
+validation_agent: "Antigravity"
 ---
 
 # xiheha-toolkit 项目档案
@@ -22,7 +22,7 @@ validation_agent: "antigravity"
 - 当前功能模块包括基础模型/LoRA 同目录 TXT 或 JSON sidecar 提示词配置（来源采集、配置选择、词条开关、提示词合并与展示）以及视频智能分割。
 - 采用经典 `NODE_CLASS_MAPPINGS` / `NODE_DISPLAY_NAME_MAPPINGS` 注册方式，前端由 `WEB_DIRECTORY = "./web"` 提供原生 ES Module 扩展。
 - 这是可继续增加同级工具的通用库，不应把仓库边界限定为 sidecar 提示词工具。
-- 当前版本源为根 `__init__.py` 的 `__version__ = "0.8.2"`。
+- 当前版本源为根 `__init__.py` 的 `__version__ = "0.8.3"`。
 
 ## Authoritative files
 
@@ -30,18 +30,18 @@ validation_agent: "antigravity"
 | --- | --- | --- |
 | `__init__.py` | 版本、Python 节点导入、公共 ID/显示名、`WEB_DIRECTORY`、路由注册 | 新节点/改名/发版必须核对这里 |
 | `nodes/*.py` | ComfyUI 输入输出契约与执行行为 | 参数、返回槽、UI payload、测试、前端镜像 |
-| `core/*.py` | 无 UI 的来源归一化、sidecar 解析/保存、提示词处理 | 所有生产者/消费者及边界测试 |
-| `server.py` | 本地预览与受限保存接口 | `web/shared/api.js`、输入校验、路径安全测试 |
+| `core/*.py` | 无 UI 的来源归一化、sidecar 解析/保存、提示词处理及共享视频 pipeline | 所有生产者/消费者及边界测试 |
+| `server.py` / `routes/*.py` | 幂等路由入口；提示词配置与视频接口的独立处理器 | 前端 API client、输入校验、路径安全测试 |
 | `web/shared/constants.js` | 前端节点 ID、外部 loader 映射、端口显示标签 | Python 注册/端口顺序/外部真实标识 |
 | `web/xiheha_toolkit.js` | 唯一 `app.registerExtension` 入口和节点模块分发 | 新前端节点模块、外部 observer |
-| `web/nodes/*.js` | 每节点 controller 和生命周期 patch | Python 节点 ID、状态 widget、payload key |
-| `web/shared/*.js` | DOM、图遍历、接口、上游监听、运行时样式 | 外部端口/widget、异步刷新、状态键 |
-| `web/shared/styles.js` | 运行时注入样式的单一来源 | `web/toolkit.css` 保持为可读镜像 |
-| `web/shared/tooltip.js` | 通用节点悬停介绍卡片引擎与互斥隔离 | `web/tooltip.css`、每节点 controller |
-| `web/tooltip.css` | 独立悬停介绍卡片样式文件（备用定制卡片） | `web/shared/tooltip.js`、`web/nodes/smart-video-splitter.js` |
+| `web/nodes/*.js` | 节点 ID、生命周期 patch 与 feature controller 安装入口 | Python 节点 ID、状态 widget、payload key |
+| `web/features/*/` | 配置编辑器及视频分割器的状态、视图、接口/时间轴与 controller | 持久状态、异步序列、生命周期清理 |
+| `web/shared/*.js` | graph、widgets、layout、workflow、payload、prompt-flow、API 与上游监听 | 外部端口/widget、异步刷新、状态键 |
+| `web/shared/tooltip/` | Tooltip 纯解析与 DOM runtime；实例隔离和互斥唯一实现 | `web/styles/tooltip.css`、节点 controller |
+| `web/toolkit.css` / `web/styles/*.css` | 主样式清单与各 feature 的单一 CSS 源 | 现有 `xh-*` class、加载顺序、按需 Tooltip |
 | `tests/test_prompt_toolkit.py` | 解析、路径、节点契约和行为回归 | 任何用户可见行为或公共契约变更 |
 | `tests/test_smart_video_splitter.py` | 视频分割契约、算法、精确切片、缓存隔离与音频容错回归 | 视频分割功能变更 |
-| `tests/test_shared_tooltip.py` | 通用 Tooltip 引擎接口、Python 字符串解析与实例隔离回归 | Tooltip 引擎变更 |
+| `tests/test_shared_tooltip.py` / `tests/frontend/*.test.mjs` | Tooltip、编辑器状态、视频状态、样式单次加载与生命周期回归 | 前端纯模块或 runtime 边界变更 |
 | `README.md` | 用户安装、节点和配置格式 | 只记录实际支持的用户行为 |
 | `CHANGELOG.md` | 用户可见版本历史 | 用户可见变更和版本号同步 |
 | `skills/comfyui-plugin-development/` | 通用 ComfyUI 插件开发、项目建档、最小入口生成和验证流程 | 修改技能后运行 skill 校验及对应脚本测试 |
@@ -133,7 +133,7 @@ validation_agent: "antigravity"
 | 输出 | 无输出，`RETURN_TYPES = ()` |
 | 行为 | 模型下拉选择；编辑既有配置或暂存一个“添加”配置；保存按钮以一次请求提交所有已加载模型的草稿；后端先生成全部写入计划，再按来源逐个提交，不提供跨文件回滚 |
 | 持久状态 | `editor_state` 保存所选模型、各模型所选配置和未保存正负提示词草稿；不包含绝对路径 |
-| 前端 | `web/nodes/prompt-config-editor.js`；controller 为 `__xhPromptConfigEditor`，异步扫描使用 `refreshSequence` |
+| 前端 | `web/nodes/prompt-config-editor.js` 安装 `web/features/prompt-config-editor/` controller；状态、DOM view 与异步保存分离，扫描使用 `refreshSequence` |
 
 ### `XH_SmartVideoSplitter`
 
@@ -144,9 +144,9 @@ validation_agent: "antigravity"
 | 必选输入（全部为 Widget，无连线端口） | `video`: 视频选择；`force_rate`: FLOAT，默认 0；`custom_width`: INT，默认 0；`custom_height`: INT，默认 540；`format`: 格式选择；`split_mode`: 模糊/精确；`fuzzy_min`: 最短时长；`target_duration`: 目标时长；`fuzzy_max`: 最长时长；`algorithm`: 算法；`sensitivity`: 灵敏度；`cut_threshold`: 切镜阈值；`peak_prominence`: 峰值显著度 |
 | 隐藏输入 | `unique_id`: `UNIQUE_ID`；`splitter_state`: `STRING` |
 | 输出（顺序固定） | `SMART_VIDEO_STREAM`/`视频流`；`AUDIO`/`音频`；`INT`/`帧数` |
-| 行为 | 模糊模式下在 [MIN, MAX] 窗口逐帧计算候选切点并根据局部显著峰值与动态阈值挑选最优切点，尾段回溯优化；精确模式下按帧固定间隔硬切分；生成独立缓存目录并在其内生成片段与 manifest.json |
+| 行为 | `core/video_pipeline.py` 统一路径解析、参数规范化、尺寸、分段、切片和 manifest；模糊模式按场景候选切点分段，精确模式按帧固定间隔切分；节点执行允许复用匹配 manifest，前端主动计算强制重算 |
 | 持久状态 | `splitter_state` 记录当前选定/上传的视频路径（`video`）、分段模式、最短、目标与最长时长，工作流载入/未手动保存刷新时无损还原 |
-| 前端 | `web/nodes/smart-video-splitter.js`；controller 为 `__xhSplitter`，提供并排上传与计算按钮、3.0~15.0s 时间轴控件及参数显隐控制 |
+| 前端 | `web/nodes/smart-video-splitter.js` 安装 `web/features/smart-video-splitter/` controller；提供上传/计算、3.0~15.0s 时间轴、参数显隐及统一生命周期清理 |
 
 ## Custom data and persisted state
 
@@ -225,7 +225,7 @@ TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支�
     "min_duration": 4.0,
     "target_duration": 5.0,
     "max_duration": 6.0,
-    "algorithm": "smart_mix",
+    "algorithm": "智能混合检测（推荐）",
     "sensitivity": 0.60,
     "cut_threshold": 0.55,
     "peak_prominence": 0.12,
@@ -257,11 +257,12 @@ TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支�
 ## Frontend integration
 
 - `web/xiheha_toolkit.js` 是唯一允许调用 `app.registerExtension` 的入口。
-- 节点模块映射：`stack-source.js`、`model-source.js`、`prompt-selector.js`、`prompt-preview.js`、`prompt-merger.js`、`prompt-display.js`、`prompt-config-editor.js`、`smart-video-splitter.js`。
-- 单向依赖目标：常量/样式 → 共享 DOM/API/上游 → 节点模块 → 入口。避免节点模块循环依赖。
+- 节点模块映射：`stack-source.js`、`model-source.js`、`prompt-selector.js`、`prompt-preview.js`、`prompt-merger.js`、`prompt-display.js`、`prompt-config-editor.js`、`smart-video-splitter.js`；后两个仅是 feature controller 的安装入口。
+- 单向依赖目标：常量/纯状态/样式 → graph/widgets/layout/workflow/API 等共享模块 → feature controller → 节点入口 → 扩展入口。节点模块不直接互相导入。
 - `web/shared/constants.js::PORT_LABELS` 是 Python 端口显示名的前端镜像；输出数组索引必须与 Python 槽位一致。
 - selector/preview/merger/display 的 DOM 区域最小尺寸当前为 400×300；config editor 为 520×370，滚动 widget 最小内容高度 280；smart video splitter 节点最小尺寸为 350×700，上传视频、切换模式等自动布局只会补足或扩大尺寸，不会缩小用户手动设置的尺寸。
-- 运行时样式来自 `web/shared/styles.js::TOOLKIT_STYLES`；`web/toolkit.css` 是同步维护的可读参考。
+- `web/toolkit.css` 是唯一主样式清单，按顺序导入 `web/styles/base.css`、`prompt.css`、`config-editor.css`、`smart-video-splitter.css`；`tooltip.css` 只在启用定制卡片时按需加载，每个样式 ID 只安装一次。
+- 工作流状态变更优先调用当前 ComfyUI 的 `activeWorkflow.changeTracker.captureCanvasState()`；旧图变更 API 仅作兼容回退，不合成鼠标事件。
 - 执行 UI payload key 只有 `xh_rows` 和 `xh_ports`；前端通过 `parseUiPayload` 读取数组第一个 JSON 值。
 
 ### 外部契约（不得重命名）
@@ -283,6 +284,8 @@ TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支�
 - `GET /xiheha_toolkit/video_info`：获取输入视频时长、分辨率、FPS 及帧数元数据。
 - `GET /xiheha_toolkit/split_status`：查询节点当前切分或分析进度。
 - `POST /xiheha_toolkit/split_video`：触发视频分析与多片段切割任务。
+
+`server.py` 只负责幂等聚合注册；提示词接口实现在 `routes/prompt_config.py`，视频接口实现在 `routes/video.py`。
 
 请求：
 
@@ -312,6 +315,9 @@ TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支�
 - 保存接口一次最多接收 100 个来源、每个来源 100 个配置、单项正向或负向提示词 100000 字符；路径由后端根据 `source_name`/`folder_name` 重新解析。
 - 保存前确认模型真实路径仍位于 ComfyUI 登记目录；已有 sidecar 原路径原扩展名写回，无 sidecar 时创建 `模型名.txt`，写入采用同目录临时文件后原子替换。
 - 批量保存会先验证全部请求并生成全部写入计划，再逐个文件提交。单文件替换具备原子性，但多个文件不构成事务：后续文件失败时，先前文件可能已更新且不会回滚；接口当前以整体 500 返回，响应不列出已成功项。前端在错误响应下保留本地草稿，但这不代表磁盘上没有部分成功。修改保存协议前必须明确部分失败、重试和草稿清理语义。
+- 视频接口只接受 ComfyUI `input` 根下的相对文件名，拒绝绝对路径和 `..`；格式、算法、模式、数值范围和节点 ID 均在后端验证。
+- `video_info` 不返回内部 `path`；切分状态不保存完整 stream；切分响应删除 source/segment 的 `path` 与 `cache_dir`。节点内部 `SMART_VIDEO_STREAM` 仍保留下游执行需要的真实路径。
+- 视频接口的 500 响应使用固定错误文本，不回传原始异常、堆栈或文件系统路径。
 
 ## Model, latent, device, and memory behavior
 
@@ -328,8 +334,9 @@ TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支�
 - 前端预览和 Python 队列执行必须同时实现同一行为；不能只修一侧。
 - `selection_state`、`token_state` 和 `editor_state` 属于保存工作流的状态，DOM controller 缓存不属于持久格式。
 - `editor_state` 保存编辑器当前模型/配置选择和未保存草稿；保存成功后对应草稿会被清除。
-- 编辑器保存期间禁用文本区和操作按钮，并以请求开始时构造的 payload 提交；若将来允许保存中继续编辑，旧响应不得清除请求开始后产生的新草稿。
+- 编辑器保存期间禁用文本区和操作按钮，并以请求开始时构造的不可变 payload/草稿快照提交；旧响应不会清除请求开始后产生的新草稿，新增草稿会迁移到后端已分配的配置编号。
 - 选择器异步请求必须保持序列保护，防止旧响应覆盖新来源。
+- 视频 controller 的元数据请求和切分请求有序列保护；节点移除必须清理轮询器、文件输入、时间轴拖动监听器、Tooltip 注册及包装过的 widget callback。
 
 ## Validation map
 
@@ -350,14 +357,21 @@ $py = Get-ChildItem __init__.py,server.py,core\*.py,nodes\*.py | ForEach-Object 
 前端语法：
 
 ```powershell
-Get-ChildItem -Recurse web -Filter *.js | ForEach-Object { node --check $_.FullName }
+& "E:\HuiShi_launcher-WorkFisher-V2\python\python.exe" skills\comfyui-plugin-development\scripts\check_frontend_syntax.py --root .
+```
+
+前端纯模块与受控插件导入：
+
+```powershell
+node --test tests\frontend\*.test.mjs
+& "E:\HuiShi_launcher-WorkFisher-V2\python\python.exe" skills\comfyui-plugin-development\scripts\check_plugin_import.py --root .
 ```
 
 若固定路径不存在，使用可用 Python，并确保 ComfyUI 根目录进入 `PYTHONPATH`。注册/路由导入需要真实或受控的 ComfyUI 环境；不能把单独导入节点模块等同于插件完整导入。
 
 ### 手工 ComfyUI 验收
 
-1. 插件重载/ComfyUI 重启后，七个节点能被搜索并显示正确分类、名称和端口。
+1. 在不影响现有工作流的独立 ComfyUI 实例中加载插件，八个节点能被搜索并显示正确分类、名称和端口。
 2. Checkpoint/UNET loader → `模型列表获取` → 下游 MODEL 的透传不变；第二输出 → selector 能预览配置。
 3. easy-use `easy loraStack`（含 `optional_lora_stack` 级联）→ stack adapter → selector 能按顺序获得 LoRA。
 4. 快速修改上游 loader/LoRA 后 selector 只显示最新请求结果。
@@ -365,7 +379,8 @@ Get-ChildItem -Recurse web -Filter *.js | ForEach-Object { node --check $_.FullN
 6. merger 空端口占位和顺序正确；display 正负文本实时/执行后显示并保持两路透传。
 7. config editor 可切换模型/配置，修改后星号位于按钮右上边框，跨模型草稿保留；保存后原配置文件更新，“添加”转为新编号并继续出现新“添加”。
 8. 无 sidecar 时 editor 创建 `模型名.txt`；错误 sidecar、无模型源元数据时提示清晰且不无故阻断模型透传。
-9. 浏览器控制台无新增异常，DOM 不重复安装或越出节点。
+9. 视频节点可选择及上传根目录/子目录视频；模糊/精确时间轴约束、主动计算、轮询进度、保存重开恢复、节点缩放和移除清理均正常。
+10. 浏览器控制台无新增异常，DOM、样式和全局监听器不重复安装或越出节点。
 
 ## Documentation and release bookkeeping
 

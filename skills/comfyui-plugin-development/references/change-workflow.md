@@ -16,6 +16,15 @@ Search before editing:
 
 Build a small impact list of files that must change and files that must remain unchanged.
 
+If the change adds a responsibility, subsystem, shared helper, route/task
+variant, or module split, use
+[architecture-and-modularity.md](architecture-and-modularity.md) to record the
+owners of the entry adapter, reusable pipeline, state, view, transport,
+lifecycle resources, and authoritative data that are actually involved. Check
+for an existing implementation before creating a second workflow. A local fix
+that extends one cohesive responsibility does not require a repository-wide
+architecture exercise.
+
 Before implementation, use [validation.md](validation.md) to select evidence for
 the configured level and changed risks. Identify unavailable UI, GPU,
 external-plugin, or restart checks now rather than at delivery time.
@@ -35,11 +44,19 @@ Give the evidence and the two or three materially different outcomes. Do not mak
 
 ## 3. Implement at the owning layer
 
-- Node declaration/execution belongs in the node implementation.
-- Reusable parsing and transformations belong in a UI-free core/helper layer.
-- LiteGraph/DOM interaction and live previews belong in frontend modules.
-- Local HTTP handlers validate at the server boundary and delegate reusable logic.
+- Node and route entries adapt framework contracts and delegate reusable
+  behavior; they do not duplicate a business pipeline.
+- Reusable parsing, transformations, algorithms, and orchestration belong in a
+  UI-free domain/core layer with one named owner.
+- LiteGraph/DOM interaction and live previews belong in frontend feature
+  modules with explicit state, view, transport, and lifecycle ownership as
+  complexity requires.
+- Local HTTP handlers validate at the server boundary, construct allowlisted
+  response DTOs, and delegate reusable logic.
 - Registries map stable public IDs to implementations; they should not contain feature logic.
+- Styles, defaults, schemas, mappings, and repeated workflows each have one
+  authoritative source; mirrors must be generated or contract-checked rather
+  than copied in full.
 
 Use a minimal patch. Preserve local style and public contracts not named by the request. Do not bulk-format, rename, upgrade dependencies, or clean unrelated files.
 

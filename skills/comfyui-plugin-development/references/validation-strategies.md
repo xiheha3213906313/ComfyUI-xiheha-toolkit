@@ -103,6 +103,9 @@ The configured level is a default, not permission to skip evidence needed for a 
 - public node IDs, port order/types, persisted workflow state, routes, or custom data schemas;
 - model/tensor dtype, device, shapes, offload, precision, memory, or output quality;
 - path containment, network access, authentication, secrets, or external services;
+- module splits, shared-pipeline consolidation, or ownership moves that can
+  change imports, registration side effects, lifecycle cleanup, or adapter
+  behavior;
 - concurrency where stale completion could discard newer user edits.
 
 Risk floors are additive and local to the affected hazard. They do not promote

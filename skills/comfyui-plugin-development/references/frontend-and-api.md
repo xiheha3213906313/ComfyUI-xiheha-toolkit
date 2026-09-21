@@ -2,6 +2,12 @@
 
 Follow the plugin's existing frontend architecture and the installed ComfyUI frontend APIs. Verify APIs from current source when version-sensitive; do not rely on old LiteGraph/ComfyUI snippets from memory.
 
+When a controller or shared module is gaining a new responsibility, or a
+frontend feature is being split, apply
+[architecture-and-modularity.md](architecture-and-modularity.md) before adding
+more code. Its layers are responsibility boundaries, not a mandatory directory
+template.
+
 ## Frontend contract checks
 
 - Match Python node IDs, internal port names, output slot indexes, custom types, and payload keys exactly.
@@ -13,7 +19,10 @@ Follow the plugin's existing frontend architecture and the installed ComfyUI fro
 - Guard async refreshes with cancellation, request identity, or monotonic sequence so stale responses cannot overwrite newer state.
 - Traverse graph links defensively: missing links, deleted nodes, cycles, and optional upstream plugins are normal conditions.
 - Preserve external node IDs, input names, widget names, and slot semantics verbatim; they are owned by the other plugin.
-- Clean up DOM elements, listeners, observers, and timers on node removal when the current architecture requires it.
+- Give every created DOM element, listener, observer, timer, callback wrapper,
+  and async handle one lifecycle owner. Complex controllers should expose one
+  idempotent disposal path or cleanup registry rather than scatter cleanup
+  beside unrelated event code.
 - For a DOM popover that must close on clicks over the LiteGraph canvas, first test normal focus/bubble behavior. If Canvas interception prevents bubbling, listen for `pointerdown` on `document` in the capture phase, reject events contained by the trigger/popover, and remove the same handler with the same capture option on close, redraw/rebuild, and node removal.
 - Treat Canvas node sizing as a lifecycle contract across `computeSize`, creation, workflow configuration, and manual resize. A long rendered title may inflate LiteGraph's native minimum width even when the body is empty; read [frontend-visual-debugging.md](frontend-visual-debugging.md) before overriding that behavior.
 - Treat visible status as one state, not an append-only log. Loading, success, failure, stale/dirty, and new-input states should replace one another according to an explicit transition model unless the product intentionally presents history.
@@ -112,7 +121,7 @@ When a frontend mirror exists, adding/changing a node commonly requires updating
 
 For async saves as well as previews:
 
-- send an immutable snapshot;
+- send an immutable request and state snapshot;
 - prevent duplicate in-flight submissions;
 - do not let an older success clear edits made after its snapshot;
 - reconcile per-item success/failure according to the declared batch contract;
@@ -132,5 +141,10 @@ For each request, response, or execution UI payload, record and test:
 - ordering and slot assumptions;
 - stale-response handling;
 - whether it persists in a workflow or exists only for the current execution.
+
+Construct HTTP responses from an explicit field allowlist. Do not return an
+internal execution object or background-task record directly and then delete
+only currently known path fields; future internal fields must remain private by
+default.
 
 JavaScript syntax checking is necessary but does not validate browser APIs, DOM layout, graph serialization, or live refresh. Those require a real ComfyUI/browser workflow check.

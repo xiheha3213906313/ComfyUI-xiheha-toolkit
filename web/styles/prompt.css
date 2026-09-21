@@ -1,0 +1,15 @@
+.xh-row, .xh-preview-row, .xh-merge-row { box-sizing: border-box; min-width: 0; max-width: 100%; }
+.xh-row { border-bottom: 1px solid rgba(255,255,255,.12); padding: 5px 2px 6px; }
+.xh-row:last-child { border-bottom: 0; }
+.xh-preview-row { border-bottom: 1px solid rgba(255,255,255,.2); padding: 6px 2px; }
+.xh-preview-row:last-child { border-bottom: 0; }
+.xh-section-label { color: #aaa; font-size: 10px; margin: 4px 0 2px; }
+.xh-chip-strip { display: flex; flex-wrap: nowrap; gap: 4px; overflow-x: auto; overflow-y: hidden; white-space: nowrap; padding: 2px 0 4px; }
+.xh-chip { flex: 0 0 auto; border: 1px solid rgba(130,190,235,.55); border-radius: 6px; padding: 2px 6px; background: rgba(60,120,165,.24); color: #e4f4ff; cursor: pointer; user-select: none; }
+.xh-chip.disabled { border-color: rgba(150,150,150,.35); background: rgba(100,100,100,.2); color: #777; }
+.xh-merge-row { padding: 4px 2px; }
+.xh-merge-label { display: block; color: #aaa; font-size: 10px; margin-bottom: 2px; }
+.xh-merge-text { box-sizing: border-box; display: block; width: 100%; max-width: 100%; min-width: 0; min-height: 34px; resize: vertical; color: inherit; background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 4px; font: 11px sans-serif; }
+.xh-display-row { padding: 4px 2px; }
+.xh-display-label { display: block; color: #aaa; font-size: 10px; margin-bottom: 2px; }
+.xh-display-text { box-sizing: border-box; display: block; width: 100%; max-width: 100%; min-width: 0; min-height: 92px; resize: vertical; color: inherit; background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.18); border-radius: 4px; padding: 6px; font: 11px monospace; line-height: 1.4; }
