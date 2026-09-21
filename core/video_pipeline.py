@@ -18,7 +18,7 @@ from .video_meta import DIMMAX, LOAD_FORMATS, get_video_metadata, target_size
 
 
 VIDEO_ALGORITHMS = DETECTION_MODES
-PIPELINE_CACHE_REVISION = "scene-mode-v3"
+PIPELINE_CACHE_REVISION = "named-split-modes-v4"
 _CACHE_REVISION_FILENAME = ".pipeline_revision"
 
 
@@ -51,7 +51,7 @@ class VideoSplitOptions:
     custom_width: int = 0
     custom_height: int = 540
     format_name: str = "AnimatedDiff"
-    split_mode: str = "fuzzy"
+    split_mode: str = "target"
     fuzzy_min: float = 4.0
     target_duration: float = 5.0
     fuzzy_max: float = 6.0
@@ -68,9 +68,9 @@ class VideoSplitOptions:
         if not isinstance(format_name, str) or format_name not in LOAD_FORMATS:
             raise ValueError("format 不受支持")
 
-        split_mode = values.get("split_mode", "fuzzy")
-        if not isinstance(split_mode, str) or split_mode not in {"fuzzy", "scene", "exact"}:
-            raise ValueError("split_mode 必须是 fuzzy、scene 或 exact")
+        split_mode = values.get("split_mode", "target")
+        if not isinstance(split_mode, str) or split_mode not in {"target", "fuzzy", "exact"}:
+            raise ValueError("split_mode 必须是 target、fuzzy 或 exact")
 
         algorithm = values.get("algorithm", VIDEO_ALGORITHMS[0])
         if not isinstance(algorithm, str) or algorithm not in VIDEO_ALGORITHMS:
@@ -84,7 +84,7 @@ class VideoSplitOptions:
         )
         fuzzy_max = float(_number(values.get("fuzzy_max", 6.0), "fuzzy_max", minimum=3.0, maximum=15.0))
 
-        if split_mode == "scene":
+        if split_mode == "fuzzy":
             normalized_min = min(fuzzy_min, fuzzy_max)
             normalized_max = max(fuzzy_min, fuzzy_max)
         else:
@@ -256,7 +256,7 @@ def run_video_split(
                 cut_threshold=options.cut_threshold,
                 peak_prominence=options.peak_prominence,
                 progress_callback=progress_callback,
-                selection_policy="earliest" if options.split_mode == "scene" else "target",
+                selection_policy="earliest" if options.split_mode == "fuzzy" else "target",
             )
         stream = cut_and_cache_segments(
             node_id=cache_key,
@@ -313,7 +313,7 @@ def public_video_stream(stream: Mapping[str, Any]) -> dict[str, Any]:
     ]
     return {
         "version": stream.get("version", 1),
-        "split_mode": stream.get("split_mode", "fuzzy"),
+        "split_mode": stream.get("split_mode", "target"),
         "source": source,
         "output": output,
         "segments": segments,

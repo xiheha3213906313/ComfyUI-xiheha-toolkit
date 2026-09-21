@@ -32,15 +32,15 @@ export function createTimeline({ onChange }) {
     targetTab.className = "xh-seg-item";
     targetTab.type = "button";
     targetTab.textContent = "目标";
-    const sceneTab = document.createElement("button");
-    sceneTab.className = "xh-seg-item";
-    sceneTab.type = "button";
-    sceneTab.textContent = "模糊";
+    const fuzzyTab = document.createElement("button");
+    fuzzyTab.className = "xh-seg-item";
+    fuzzyTab.type = "button";
+    fuzzyTab.textContent = "模糊";
     const exactTab = document.createElement("button");
     exactTab.className = "xh-seg-item";
     exactTab.type = "button";
     exactTab.textContent = "精确";
-    modeSwitch.append(targetTab, sceneTab, exactTab);
+    modeSwitch.append(targetTab, fuzzyTab, exactTab);
     header.append(heading, modeSwitch);
     panel.appendChild(header);
 
@@ -151,8 +151,8 @@ export function createTimeline({ onChange }) {
             emitMove(name, nextValue);
         });
     }
-    targetTab.addEventListener("click", () => onChange(setSplitMode(state, "fuzzy")));
-    sceneTab.addEventListener("click", () => onChange(setSplitMode(state, "scene")));
+    targetTab.addEventListener("click", () => onChange(setSplitMode(state, "target")));
+    fuzzyTab.addEventListener("click", () => onChange(setSplitMode(state, "fuzzy")));
     exactTab.addEventListener("click", () => onChange(setSplitMode(state, "exact")));
     track.addEventListener("pointerdown", (event) => {
         if (event.target !== track && event.target !== rail && event.target !== range) return;
@@ -166,19 +166,19 @@ export function createTimeline({ onChange }) {
     function render(nextState) {
         state = nextState;
         const positions = timelinePositions(state);
-        const targetMode = state.split_mode === "fuzzy";
-        const sceneMode = state.split_mode === "scene";
+        const targetMode = state.split_mode === "target";
+        const fuzzyMode = state.split_mode === "fuzzy";
         const exactMode = state.split_mode === "exact";
-        const rangedMode = targetMode || sceneMode;
+        const rangedMode = targetMode || fuzzyMode;
         panel.classList.toggle("is-exact", exactMode);
         targetTab.classList.toggle("active", targetMode);
-        sceneTab.classList.toggle("active", sceneMode);
+        fuzzyTab.classList.toggle("active", fuzzyMode);
         exactTab.classList.toggle("active", exactMode);
         targetTab.setAttribute("aria-pressed", String(targetMode));
-        sceneTab.setAttribute("aria-pressed", String(sceneMode));
+        fuzzyTab.setAttribute("aria-pressed", String(fuzzyMode));
         exactTab.setAttribute("aria-pressed", String(exactMode));
         handles.min.style.display = rangedMode ? "block" : "none";
-        handles.target.style.display = sceneMode ? "none" : "block";
+        handles.target.style.display = fuzzyMode ? "none" : "block";
         handles.max.style.display = rangedMode ? "block" : "none";
         range.style.display = "block";
         handles.min.style.left = `${positions.minimum}%`;
@@ -196,8 +196,8 @@ export function createTimeline({ onChange }) {
         for (const [name, handle] of Object.entries(handles)) {
             let minimum = MIN_RANGE;
             let maximum = MAX_RANGE;
-            if (sceneMode && name === "min") maximum = round1(state.fuzzy_max - MIN_EDGE_GAP);
-            if (sceneMode && name === "max") minimum = round1(state.fuzzy_min + MIN_EDGE_GAP);
+            if (fuzzyMode && name === "min") maximum = round1(state.fuzzy_max - MIN_EDGE_GAP);
+            if (fuzzyMode && name === "max") minimum = round1(state.fuzzy_min + MIN_EDGE_GAP);
             if (targetMode && name === "min") {
                 maximum = Math.min(state.target_duration, round1(state.fuzzy_max - MIN_EDGE_GAP));
             }
@@ -223,7 +223,7 @@ export function createTimeline({ onChange }) {
                 stat.appendChild(bold);
                 labels.appendChild(stat);
             }
-        } else if (sceneMode) {
+        } else if (fuzzyMode) {
             for (const [label, value] of [["最短", state.fuzzy_min], ["最长", state.fuzzy_max]]) {
                 const stat = document.createElement("span");
                 stat.append(`${label}: `);

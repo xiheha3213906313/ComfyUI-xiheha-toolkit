@@ -14,41 +14,45 @@ from nodes import smart_video_splitter as splitter_node
 
 
 class VideoPipelineTests(unittest.TestCase):
-    def test_split_modes_keep_legacy_target_semantics_and_normalize_scene_range(self):
+    def test_target_and_fuzzy_modes_normalize_their_own_duration_constraints(self):
         target = VideoSplitOptions.from_mapping({
-            "split_mode": "fuzzy",
+            "split_mode": "target",
             "fuzzy_min": 12,
             "target_duration": 5,
             "fuzzy_max": 4,
         })
         self.assertEqual((target.fuzzy_min, target.target_duration, target.fuzzy_max), (5.0, 5.0, 5.0))
 
-        scene = VideoSplitOptions.from_mapping({
-            "split_mode": "scene",
+        fuzzy = VideoSplitOptions.from_mapping({
+            "split_mode": "fuzzy",
             "fuzzy_min": 12,
             "target_duration": 3,
             "fuzzy_max": 4,
         })
-        self.assertEqual(scene.split_mode, "scene")
-        self.assertEqual((scene.fuzzy_min, scene.fuzzy_max), (4.0, 12.0))
-        self.assertEqual(scene.target_duration, 3.0)
+        self.assertEqual(fuzzy.split_mode, "fuzzy")
+        self.assertEqual((fuzzy.fuzzy_min, fuzzy.fuzzy_max), (4.0, 12.0))
+        self.assertEqual(fuzzy.target_duration, 3.0)
+        with self.assertRaisesRegex(ValueError, "target、fuzzy 或 exact"):
+            VideoSplitOptions.from_mapping({"split_mode": "scene"})
 
-    def test_scene_mode_delegates_to_earliest_selection_policy(self):
+    def test_target_and_fuzzy_modes_delegate_to_their_selection_policies(self):
         metadata = {
             "path": "video.mp4", "filename": "video.mp4", "fps": 24.0,
             "width": 640, "height": 480, "duration": 3.0,
             "frame_count": 72, "has_audio": False,
         }
-        options = VideoSplitOptions(split_mode="scene")
-        stream = {"segments": []}
-        with patch.object(video_pipeline, "get_video_metadata", return_value=metadata), patch.object(
-            video_pipeline, "target_size", return_value=(640, 480)
-        ), patch.object(video_pipeline, "split_video_fuzzy", return_value=[]) as split_scene, patch.object(
-            video_pipeline, "cut_and_cache_segments", return_value=stream
-        ):
-            result, _ = run_video_split("video.mp4", "scene-test", options, reuse_manifest=False)
-        self.assertIs(result, stream)
-        self.assertEqual(split_scene.call_args.kwargs["selection_policy"], "earliest")
+        for mode, expected_policy in (("target", "target"), ("fuzzy", "earliest")):
+            with self.subTest(mode=mode):
+                options = VideoSplitOptions(split_mode=mode)
+                stream = {"segments": []}
+                with patch.object(video_pipeline, "get_video_metadata", return_value=metadata), patch.object(
+                    video_pipeline, "target_size", return_value=(640, 480)
+                ), patch.object(video_pipeline, "split_video_fuzzy", return_value=[]) as split, patch.object(
+                    video_pipeline, "cut_and_cache_segments", return_value=stream
+                ):
+                    result, _ = run_video_split("video.mp4", f"{mode}-test", options, reuse_manifest=False)
+                self.assertIs(result, stream)
+                self.assertEqual(split.call_args.kwargs["selection_policy"], expected_policy)
 
     def test_manifest_is_reused_only_through_shared_pipeline(self):
         with tempfile.TemporaryDirectory() as temporary:

@@ -14,7 +14,7 @@ import {
 
 test("splitter state restores video and normalizes timeline constraints", () => {
     const state = parseSplitterState(JSON.stringify({
-        split_mode: "fuzzy", fuzzy_min: 12, target_duration: 5, fuzzy_max: 4, video: "sub/video.mp4",
+        split_mode: "target", fuzzy_min: 12, target_duration: 5, fuzzy_max: 4, video: "sub/video.mp4",
     }));
     assert.equal(state.video, "sub/video.mp4");
     assert.ok(state.fuzzy_min <= state.target_duration);
@@ -24,7 +24,7 @@ test("splitter state restores video and normalizes timeline constraints", () => 
 });
 
 test("timeline movement enforces fuzzy and exact bounds", () => {
-    let state = parseSplitterState('{"split_mode":"fuzzy","fuzzy_min":4,"target_duration":5,"fuzzy_max":6}');
+    let state = parseSplitterState('{"split_mode":"target","fuzzy_min":4,"target_duration":5,"fuzzy_max":6}');
     state = moveTimelineHandle(state, "min", 9);
     assert.equal(state.fuzzy_min, 5);
     state = moveTimelineHandle(state, "max", 3);
@@ -33,9 +33,9 @@ test("timeline movement enforces fuzzy and exact bounds", () => {
     assert.equal(closestTimelineHandle({ ...state, split_mode: "exact" }, 10), "target");
 });
 
-test("scene mode keeps target dormant and constrains only minimum and maximum", () => {
-    let state = parseSplitterState('{"split_mode":"scene","fuzzy_min":11,"target_duration":3,"fuzzy_max":5}');
-    assert.equal(state.split_mode, "scene");
+test("fuzzy mode keeps target dormant and constrains only minimum and maximum", () => {
+    let state = parseSplitterState('{"split_mode":"fuzzy","fuzzy_min":11,"target_duration":3,"fuzzy_max":5}');
+    assert.equal(state.split_mode, "fuzzy");
     assert.equal(state.fuzzy_min, 5);
     assert.equal(state.fuzzy_max, 11);
     assert.equal(state.target_duration, 3);
@@ -49,17 +49,17 @@ test("scene mode keeps target dormant and constrains only minimum and maximum", 
 
 test("all three timeline modes round-trip through persisted state", () => {
     let state = parseSplitterState("{}");
-    assert.equal(state.split_mode, "fuzzy");
-    state = setSplitMode(state, "scene");
-    assert.equal(state.split_mode, "scene");
-    state = setSplitMode(state, "exact");
-    assert.equal(state.split_mode, "exact");
+    assert.equal(state.split_mode, "target");
     state = setSplitMode(state, "fuzzy");
     assert.equal(state.split_mode, "fuzzy");
+    state = setSplitMode(state, "exact");
+    assert.equal(state.split_mode, "exact");
+    state = setSplitMode(state, "target");
+    assert.equal(state.split_mode, "target");
 });
 
 test("white edge handles keep at least 0.2 seconds apart", () => {
-    let state = parseSplitterState('{"split_mode":"fuzzy","fuzzy_min":8,"target_duration":8,"fuzzy_max":8}');
+    let state = parseSplitterState('{"split_mode":"target","fuzzy_min":8,"target_duration":8,"fuzzy_max":8}');
     assert.equal(state.fuzzy_min, 8);
     assert.equal(state.fuzzy_max, 8.2);
     state = moveTimelineHandle(state, "min", 15);
@@ -69,7 +69,7 @@ test("white edge handles keep at least 0.2 seconds apart", () => {
 });
 
 test("timeline regions route dark areas to edge handles and blue range to target", () => {
-    const state = parseSplitterState('{"split_mode":"fuzzy","fuzzy_min":5,"target_duration":8,"fuzzy_max":11}');
+    const state = parseSplitterState('{"split_mode":"target","fuzzy_min":5,"target_duration":8,"fuzzy_max":11}');
     assert.equal(closestTimelineHandle(state, 4.9), "min");
     assert.equal(closestTimelineHandle(state, 5), "target");
     assert.equal(closestTimelineHandle(state, 9.5), "target");
@@ -77,17 +77,17 @@ test("timeline regions route dark areas to edge handles and blue range to target
     assert.equal(closestTimelineHandle(state, 11.1), "max");
 });
 
-test("scene timeline routes clicks to the nearest edge handle", () => {
-    const state = parseSplitterState('{"split_mode":"scene","fuzzy_min":5,"target_duration":8,"fuzzy_max":11}');
+test("fuzzy timeline routes clicks to the nearest edge handle", () => {
+    const state = parseSplitterState('{"split_mode":"fuzzy","fuzzy_min":5,"target_duration":8,"fuzzy_max":11}');
     assert.equal(closestTimelineHandle(state, 6), "min");
     assert.equal(closestTimelineHandle(state, 8), "min");
     assert.equal(closestTimelineHandle(state, 8.1), "max");
     assert.equal(closestTimelineHandle(state, 10), "max");
 });
 
-test("target and scene modes show detection controls while exact mode hides them", () => {
+test("target and fuzzy modes show detection controls while exact mode hides them", () => {
+    assert.equal(usesSceneDetection("target"), true);
     assert.equal(usesSceneDetection("fuzzy"), true);
-    assert.equal(usesSceneDetection("scene"), true);
     assert.equal(usesSceneDetection("exact"), false);
 });
 
@@ -103,11 +103,11 @@ test("request and preview URL construction use normalized state", () => {
     assert.equal(payload.format, "Wan");
     assert.equal(payload.algorithm, "智能自适应检测（推荐）");
 
-    const scenePayload = buildSplitPayload("42", "video.mp4", {
-        split_mode: "scene", fuzzy_min: 4, target_duration: 15, fuzzy_max: 6,
+    const fuzzyPayload = buildSplitPayload("42", "video.mp4", {
+        split_mode: "fuzzy", fuzzy_min: 4, target_duration: 15, fuzzy_max: 6,
     });
-    assert.equal(scenePayload.split_mode, "scene");
-    assert.equal(scenePayload.fuzzy_min, 4);
-    assert.equal(scenePayload.fuzzy_max, 6);
-    assert.equal(scenePayload.target_duration, 15);
+    assert.equal(fuzzyPayload.split_mode, "fuzzy");
+    assert.equal(fuzzyPayload.fuzzy_min, 4);
+    assert.equal(fuzzyPayload.fuzzy_max, 6);
+    assert.equal(fuzzyPayload.target_duration, 15);
 });

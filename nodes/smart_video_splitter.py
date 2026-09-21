@@ -59,12 +59,12 @@ class SmartVideoSplitter:
                         "• 原尺寸/自定义: 保持原始宽高比或严格按填写的自定义宽高输出"
                     ),
                 }),
-                "split_mode": (["fuzzy", "scene", "exact"], {
-                    "default": "fuzzy",
+                "split_mode": (["target", "fuzzy", "exact"], {
+                    "default": "target",
                     "tooltip": (
                         "【分段模式】\n"
-                        "• fuzzy (目标): 在最低～最高时长内选择最接近目标时长的可靠切镜点\n"
-                        "• scene (模糊): 达到最低时长后遇到第一个可靠切镜点就切；没有切镜时在最高时长切分\n"
+                        "• target (目标): 在最低～最高时长内选择最接近目标时长的可靠切镜点\n"
+                        "• fuzzy (模糊): 达到最低时长后遇到第一个可靠切镜点就切；没有切镜时在最高时长切分\n"
                         "• exact (精确): 按目标时长严格切分为等长区间，保留尾段余数"
                     )
                 }),
@@ -155,7 +155,7 @@ class SmartVideoSplitter:
         custom_width: int = 0,
         custom_height: int = 540,
         format: str = "AnimatedDiff",
-        split_mode: str = "fuzzy",
+        split_mode: str = "target",
         fuzzy_min: float = 4.0,
         target_duration: float = 5.0,
         fuzzy_max: float = 6.0,

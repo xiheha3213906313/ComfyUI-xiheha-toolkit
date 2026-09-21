@@ -3,7 +3,7 @@ export const MAX_RANGE = 15;
 export const MIN_EDGE_GAP = 0.2;
 
 export const DEFAULT_SPLITTER_STATE = Object.freeze({
-    split_mode: "fuzzy",
+    split_mode: "target",
     fuzzy_min: 4,
     target_duration: 5,
     fuzzy_max: 6,
@@ -24,13 +24,13 @@ function finite(value, fallback) {
 }
 
 export function normalizeSplitterState(value = {}) {
-    const splitMode = ["fuzzy", "scene", "exact"].includes(value?.split_mode)
+    const splitMode = ["target", "fuzzy", "exact"].includes(value?.split_mode)
         ? value.split_mode
-        : "fuzzy";
+        : "target";
     let target = clamp(round1(finite(value?.target_duration, DEFAULT_SPLITTER_STATE.target_duration)), MIN_RANGE, MAX_RANGE);
     let minimum = clamp(round1(finite(value?.fuzzy_min, DEFAULT_SPLITTER_STATE.fuzzy_min)), MIN_RANGE, MAX_RANGE);
     let maximum = clamp(round1(finite(value?.fuzzy_max, DEFAULT_SPLITTER_STATE.fuzzy_max)), MIN_RANGE, MAX_RANGE);
-    if (splitMode === "scene") {
+    if (splitMode === "fuzzy") {
         [minimum, maximum] = [Math.min(minimum, maximum), Math.max(minimum, maximum)];
     } else {
         minimum = Math.min(minimum, target);
@@ -41,7 +41,7 @@ export function normalizeSplitterState(value = {}) {
         if (expandedMaximum <= MAX_RANGE) maximum = expandedMaximum;
         else minimum = round1(maximum - MIN_EDGE_GAP);
     }
-    if (splitMode !== "scene") target = clamp(target, minimum, maximum);
+    if (splitMode !== "fuzzy") target = clamp(target, minimum, maximum);
     return {
         split_mode: splitMode,
         fuzzy_min: minimum,
@@ -71,7 +71,7 @@ export function setSplitMode(state, mode) {
 }
 
 export function usesSceneDetection(mode) {
-    return mode === "fuzzy" || mode === "scene";
+    return mode === "target" || mode === "fuzzy";
 }
 
 export function moveTimelineHandle(state, handle, rawValue) {
@@ -83,7 +83,7 @@ export function moveTimelineHandle(state, handle, rawValue) {
             ? normalizeSplitterState({ ...current, target_duration: value })
             : current;
     }
-    if (current.split_mode === "scene") {
+    if (current.split_mode === "fuzzy") {
         if (handle === "min") {
             current.fuzzy_min = clamp(
                 value,
@@ -116,7 +116,7 @@ export function closestTimelineHandle(state, rawValue) {
     const current = normalizeSplitterState(state);
     if (current.split_mode === "exact") return "target";
     const value = clamp(Number(rawValue), MIN_RANGE, MAX_RANGE);
-    if (current.split_mode === "scene") {
+    if (current.split_mode === "fuzzy") {
         return Math.abs(value - current.fuzzy_min) <= Math.abs(value - current.fuzzy_max)
             ? "min"
             : "max";
