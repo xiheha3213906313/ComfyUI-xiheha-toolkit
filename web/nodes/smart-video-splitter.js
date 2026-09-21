@@ -374,6 +374,7 @@ export function splitterController(node) {
                 fuzzy_min: fuzzyMin,
                 target_duration: targetDuration,
                 fuzzy_max: fuzzyMax,
+                video: videoWidget?.value || "",
             });
         }
     }
@@ -516,7 +517,9 @@ export function splitterController(node) {
         statusPanel.innerHTML = `<div>${statusText}</div>`;
     }
 
+    let videoLoadSequence = 0;
     async function updateVideoPreviewAndInfo(filename) {
+        const seq = ++videoLoadSequence;
         if (!filename || filename === "none") {
             videoEl.hidden = true;
             statusText = "未选择视频。";
@@ -525,7 +528,11 @@ export function splitterController(node) {
             return;
         }
 
-        const viewUrl = api.apiURL(`/view?filename=${encodeURIComponent(filename)}&type=input`);
+        const clean = filename.replace(/\\/g, "/");
+        const slashIdx = clean.lastIndexOf("/");
+        const subfolder = slashIdx !== -1 ? clean.slice(0, slashIdx) : "";
+        const baseName = slashIdx !== -1 ? clean.slice(slashIdx + 1) : clean;
+        const viewUrl = api.apiURL(`/view?filename=${encodeURIComponent(baseName)}&type=input${subfolder ? `&subfolder=${encodeURIComponent(subfolder)}` : ""}`);
         videoEl.src = viewUrl;
         videoEl.hidden = false;
         videoEl.onloadedmetadata = () => {
@@ -535,6 +542,7 @@ export function splitterController(node) {
 
         try {
             const resp = await fetch(api.apiURL(`/xiheha_toolkit/video_info?filename=${encodeURIComponent(filename)}`));
+            if (seq !== videoLoadSequence) return;
             if (resp.ok) {
                 const info = await resp.json();
                 statusText = `已加载: <b>${info.filename}</b> | 时长: ${info.duration}s | FPS: ${info.fps} | 分辨率: ${info.width}×${info.height} | 总帧数: ${info.frame_count}`;
@@ -542,8 +550,10 @@ export function splitterController(node) {
                 statusText = `已加载: ${filename}`;
             }
         } catch {
+            if (seq !== videoLoadSequence) return;
             statusText = `已加载: ${filename}`;
         }
+        if (seq !== videoLoadSequence) return;
         isDirty = false;
         updateStatus();
     }
@@ -556,8 +566,12 @@ export function splitterController(node) {
             origCb?.apply(this, arguments);
             isDirty = false;
             updateVideoPreviewAndInfo(val);
+            if (!app.configuringGraph) {
+                syncStateToWidgets();
+                markDirty(node);
+            }
         };
-        if (videoWidget.value && videoWidget.value !== "none") {
+        if (!app.configuringGraph && videoWidget.value && videoWidget.value !== "none") {
             updateVideoPreviewAndInfo(videoWidget.value);
         }
     }
@@ -594,14 +608,21 @@ export function splitterController(node) {
             const resp = await api.fetchApi("/upload/image", { method: "POST", body: formData });
             if (resp.ok) {
                 const resData = await resp.json();
-                const uploadedName = resData.name;
+                let uploadedName = resData.name;
+                if (resData.subfolder) {
+                    uploadedName = `${resData.subfolder}/${uploadedName}`;
+                }
                 if (videoWidget) {
+                    const oldValue = videoWidget.value;
                     if (!videoWidget.options.values.includes(uploadedName)) {
                         videoWidget.options.values.push(uploadedName);
                     }
                     videoWidget.value = uploadedName;
                     videoWidget.callback?.(uploadedName);
+                    node.onWidgetChanged?.(videoWidget.name, uploadedName, oldValue, videoWidget);
                 }
+                syncStateToWidgets();
+                markDirty(node);
             } else {
                 alert("视频上传失败，请重试。");
             }
@@ -712,6 +733,12 @@ export function splitterController(node) {
             if (parsed.fuzzy_min != null) fuzzyMin = Number(parsed.fuzzy_min);
             if (parsed.target_duration != null) targetDuration = Number(parsed.target_duration);
             if (parsed.fuzzy_max != null) fuzzyMax = Number(parsed.fuzzy_max);
+            if (parsed.video && videoWidget) {
+                if (videoWidget.options?.values && !videoWidget.options.values.includes(parsed.video)) {
+                    videoWidget.options.values.push(parsed.video);
+                }
+                videoWidget.value = parsed.video;
+            }
         } catch {}
     }
 
@@ -725,6 +752,7 @@ export function splitterController(node) {
         root,
         setMode,
         updateStatus,
+        updateVideoPreviewAndInfo,
         dispose() {
             if (statusTimer) clearInterval(statusTimer);
             fileInput?.remove();
@@ -752,13 +780,28 @@ export function patch(nodeType) {
         enforceNodeMinimumSize(this, MIN_WIDTH, MIN_HEIGHT);
         resizeNodeToFit(this);
         const stateWidget = widgetByName(this, "splitter_state");
+        const videoWidget = widgetByName(this, "video");
+        let restoredVideo = "";
         if (stateWidget?.value && this.__xhSplitter) {
             try {
                 const s = JSON.parse(stateWidget.value);
                 if (s.fuzzy_min != null && s.target_duration != null && s.fuzzy_max != null) {
                     this.__xhSplitter.setMode(s.split_mode || "fuzzy");
                 }
+                if (s.video) {
+                    restoredVideo = s.video;
+                }
             } catch {}
+        }
+        if (!restoredVideo && videoWidget?.value && videoWidget.value !== "none") {
+            restoredVideo = videoWidget.value;
+        }
+        if (restoredVideo && videoWidget) {
+            if (videoWidget.options?.values && !videoWidget.options.values.includes(restoredVideo)) {
+                videoWidget.options.values.push(restoredVideo);
+            }
+            videoWidget.value = restoredVideo;
+            this.__xhSplitter?.updateVideoPreviewAndInfo?.(restoredVideo);
         }
         applyTooltipMutualExclusion(this);
     };

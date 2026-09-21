@@ -16,7 +16,9 @@ Search before editing:
 
 Build a small impact list of files that must change and files that must remain unchanged.
 
-Before implementation, read the configured validation level. For `medium` or `careful`, make a compact risk-to-evidence plan with columns such as risk, evidence, and current executability. For `simple`, the model may keep this plan implicit unless a risk floor applies. Identify unavailable UI, GPU, external-plugin, or restart checks now rather than at delivery time.
+Before implementation, use [validation.md](validation.md) to select evidence for
+the configured level and changed risks. Identify unavailable UI, GPU,
+external-plugin, or restart checks now rather than at delivery time.
 
 ## 2. Resolve consequential ambiguity
 

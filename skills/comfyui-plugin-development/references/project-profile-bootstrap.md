@@ -27,7 +27,14 @@ The canonical file is `COMFYUI_PLUGIN_PROJECT.md` at the plugin root.
 
 ### Choose validation strategy
 
-During initial profile creation, ask the user to choose `simple`, `medium`, or `careful` using the descriptions in [validation-strategies.md](validation-strategies.md). Recommend `medium` if the user has no preference. This question may be combined with the parse-consent question to avoid an extra round trip.
+During initial profile creation, use the
+[three-level structured-choice procedure](user-input-tools.md#three-level-validation-choice)
+to ask the user to choose `simple`, `medium`, or `careful`, using the
+descriptions in [validation-strategies.md](validation-strategies.md). Recommend
+`medium`, but do not select or persist it without an explicit answer. When the
+native UI supports multiple independent fields, this choice may accompany the
+parse-consent question to avoid an extra round trip; keep it as a separate
+field so one answer is never inferred from the other.
 
 Record the selection, exact current model label or identifier, current coding-agent host name, and current local timestamp in the profile frontmatter. Pass the model and agent to `set_validation_strategy.py` with `--model` and `--agent`. If either identity is unavailable, record `unknown`; an unknown model disables automatic model-mismatch detection, while an unknown agent forces live tool discovery. A declined profile still records this configuration.
 

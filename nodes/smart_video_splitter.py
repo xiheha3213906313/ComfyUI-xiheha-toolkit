@@ -153,6 +153,15 @@ class SmartVideoSplitter:
     FUNCTION = "process"
     CATEGORY = "xiheha-工具箱/视频"
 
+    @classmethod
+    def VALIDATE_INPUTS(cls, video: str, **kwargs: Any) -> bool | str:
+        if not video or video == "none":
+            return "请先选择或上传视频文件。"
+        cleaned_video = video.strip().strip('"')
+        if not folder_paths.exists_annotated_filepath(cleaned_video):
+            return f"视频文件不存在: {cleaned_video}"
+        return True
+
     def process(
         self,
         video: str,

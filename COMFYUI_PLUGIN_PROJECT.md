@@ -6,10 +6,10 @@ analyzed_at: 2026-09-19T14:41:11+08:00
 declined_at: null
 remind_after: null
 analysis_scope: full-static
-validation_level: simple
+validation_level: medium
 validation_model: "Gemini 3.8 Flash (High)"
-validation_configured_at: 2026-09-20T23:27:57.714786+08:00
-validation_agent: "Antigravity"
+validation_configured_at: 2026-09-21T11:51:51.517133+08:00
+validation_agent: "antigravity"
 ---
 
 # xiheha-toolkit 项目档案
@@ -22,15 +22,7 @@ validation_agent: "Antigravity"
 - 当前功能模块包括基础模型/LoRA 同目录 TXT 或 JSON sidecar 提示词配置（来源采集、配置选择、词条开关、提示词合并与展示）以及视频智能分割。
 - 采用经典 `NODE_CLASS_MAPPINGS` / `NODE_DISPLAY_NAME_MAPPINGS` 注册方式，前端由 `WEB_DIRECTORY = "./web"` 提供原生 ES Module 扩展。
 - 这是可继续增加同级工具的通用库，不应把仓库边界限定为 sidecar 提示词工具。
-- 当前版本源为根 `__init__.py` 的 `__version__ = "0.8.1"`。
-
-## UI and design rules
-
-以下内容是本项目的默认 UI 偏好；用户在具体任务中提出的明确要求始终优先：
-
-- 面向用户的界面不使用 Emoji，包括按钮、标签、状态提示和装饰性图标。
-- 用户可见文字在含义准确时使用自然、易懂的中文。技术性很强、没有可靠中文译法，或翻译后容易产生误导的术语保留原文，不为追求全中文而强行翻译。
-- 布局必须为标签、选项和动态内容预留合理空间。新增或调整控件后，检查不同选项数量、条件显隐、展开/折叠、节点缩放和历史工作流载入状态，避免选项、文字、按钮、输入框或边框重叠、遮挡和塌陷。
+- 当前版本源为根 `__init__.py` 的 `__version__ = "0.8.2"`。
 
 ## Authoritative files
 
@@ -153,7 +145,7 @@ validation_agent: "Antigravity"
 | 隐藏输入 | `unique_id`: `UNIQUE_ID`；`splitter_state`: `STRING` |
 | 输出（顺序固定） | `SMART_VIDEO_STREAM`/`视频流`；`AUDIO`/`音频`；`INT`/`帧数` |
 | 行为 | 模糊模式下在 [MIN, MAX] 窗口逐帧计算候选切点并根据局部显著峰值与动态阈值挑选最优切点，尾段回溯优化；精确模式下按帧固定间隔硬切分；生成独立缓存目录并在其内生成片段与 manifest.json |
-| 持久状态 | `splitter_state` 记录分段模式、最短、目标与最长时长，工作流载入时无损还原 |
+| 持久状态 | `splitter_state` 记录当前选定/上传的视频路径（`video`）、分段模式、最短、目标与最长时长，工作流载入/未手动保存刷新时无损还原 |
 | 前端 | `web/nodes/smart-video-splitter.js`；controller 为 `__xhSplitter`，提供并排上传与计算按钮、3.0~15.0s 时间轴控件及参数显隐控制 |
 
 ## Custom data and persisted state

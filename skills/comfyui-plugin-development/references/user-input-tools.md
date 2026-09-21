@@ -48,6 +48,40 @@ The `question_tool` object returned by `check_project_profile.py` provides the
 configured/current agent, preferred candidate, and fallback action. It cannot
 inspect the model's live tool inventory, so it never proves availability.
 
+## Three-level validation choice
+
+When initialization, invalid configuration, or a model-binding mismatch
+requires the user to choose among `simple`, `medium`, and `careful`, treat it as
+a native structured-choice task:
+
+1. Resolve and call the host's available user-input tool before considering a
+   normal chat question.
+2. If the tool supports options, present all three mutually exclusive choices
+   in one question. Put `medium` first and mark it recommended, followed by
+   `simple` and `careful`. Give each option one short impact description based
+   on [validation-strategies.md](validation-strategies.md); do not hide a level,
+   merge levels, or choose for the user.
+3. State the saved level and configured/current model identities in the prompt
+   when the choice was triggered by a model mismatch. During initialization,
+   state that the choice becomes the project default and can later be changed
+   or overridden for one task.
+4. If the native UI can collect several independent decisions in one call, the
+   validation choice may accompany project-parse consent as a separate field.
+   Never bury the three levels inside another option or infer the validation
+   choice from the parse answer.
+5. If the tool cannot represent three choices but supports a waiting free-text
+   response, ask for exactly one of the three names through that native UI. Do
+   not truncate the list to satisfy a tool limit.
+6. Continue only from an explicit answer that unambiguously maps to one level.
+   Persist it before implementation when persistence is required. An empty,
+   partial, timeout, cancellation, or closed prompt follows the fallback and
+   stop rules in `SKILL.md`; it never authorizes the recommended default.
+
+When plain-text fallback is required, explain the three choices concisely and
+end the `final` response with one focused question asking the user to choose
+`simple`, `medium`, or `careful`. End the turn immediately. Do not run a
+command, persist `medium`, or begin implementation until the user replies.
+
 After a tool is selected, follow the blocking-question and timeout rules in
 `SKILL.md`. If several material choices cannot be resolved together, continue
 in multiple rounds: wait for each answer before asking a dependent follow-up,

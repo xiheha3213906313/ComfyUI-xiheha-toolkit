@@ -97,10 +97,30 @@ export function widgetValue(node, name, fallback = "") {
 }
 
 export function markDirty(node) {
+    if (!node) return;
     node.setDirtyCanvas?.(true, true);
     node.graph?.setDirtyCanvas?.(true, true);
     app.graph?.setDirtyCanvas?.(true, true);
     app.graph?.change?.();
+    app.graph?.afterChange?.();
+
+    if (app.canvas?.captureCanvasState) {
+        app.canvas.captureCanvasState();
+    } else if (app.canvas?.checkState) {
+        app.canvas.checkState();
+    }
+
+    try {
+        app.workflowManager?.activeWorkflow?.changeTracker?.captureCanvasState?.();
+    } catch {}
+
+    try {
+        document.dispatchEvent(new CustomEvent("litegraph:canvas", { detail: { subType: "after-change" } }));
+    } catch {}
+
+    try {
+        window.dispatchEvent(new MouseEvent("mouseup"));
+    } catch {}
 }
 
 export function connectedNode(node, inputName) {

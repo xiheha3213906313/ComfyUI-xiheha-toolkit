@@ -111,6 +111,38 @@ class TestSmartVideoSplitterContract(unittest.TestCase):
         self.assertIn("XH_SmartVideoSplitter", display_mappings)
         self.assertEqual(display_mappings["XH_SmartVideoSplitter"], "智能视频分割器")
 
+    def test_validate_inputs(self):
+        # Empty or "none"
+        self.assertEqual(SmartVideoSplitter.VALIDATE_INPUTS(""), "请先选择或上传视频文件。")
+        self.assertEqual(SmartVideoSplitter.VALIDATE_INPUTS("none"), "请先选择或上传视频文件。")
+        self.assertEqual(SmartVideoSplitter.VALIDATE_INPUTS(None), "请先选择或上传视频文件。")
+
+        # Non-existent file
+        res = SmartVideoSplitter.VALIDATE_INPUTS("non_existent_12345.mp4")
+        self.assertIsInstance(res, str)
+        self.assertIn("不存在", res)
+
+        # Existing file (mock exists_annotated_filepath)
+        from unittest.mock import patch
+        with patch.object(folder_paths, "exists_annotated_filepath", return_value=True):
+            self.assertTrue(SmartVideoSplitter.VALIDATE_INPUTS("my_video.mp4"))
+
+    def test_splitter_state_includes_video_and_restoration(self):
+        js_path = os.path.join(os.path.dirname(__file__), "..", "web", "nodes", "smart-video-splitter.js")
+        with open(js_path, "r", encoding="utf-8") as f:
+            js_content = f.read()
+
+        # Check syncStateToWidgets writes video to splitter_state
+        self.assertIn('video: videoWidget?.value || ""', js_content)
+
+        # Check controller exposes updateVideoPreviewAndInfo
+        self.assertIn("updateVideoPreviewAndInfo,", js_content)
+
+        # Check onConfigure restores video from stateWidget or videoWidget
+        self.assertIn("if (s.video)", js_content)
+        self.assertIn("this.__xhSplitter?.updateVideoPreviewAndInfo?.(restoredVideo)", js_content)
+
+
 
 class TestDimensionCalculation(unittest.TestCase):
     """Verify target_size aspect ratio, overrides and downscale ratio alignment."""
@@ -348,6 +380,68 @@ class TestFrontendNodeSizing(unittest.TestCase):
             assert(JSON.stringify(preserveNodeSize([640, 900], [350, 700])) === '[640,900]', 'manual expansion was shrunk');
             assert(JSON.stringify(preserveNodeSize([200, 500], [300, 650])) === '[350,700]', 'minimum size was not enforced');
             assert(JSON.stringify(preserveNodeSize([400, 800], [520, 860])) === '[520,860]', 'computed expansion was not applied');
+        """
+        result = subprocess.run(
+            [node, "--input-type=module", "--eval", script],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+
+class TestFrontendVideoStatePersistence(unittest.TestCase):
+    """Verify video state restoration and URL building logic."""
+
+    def test_video_view_url_and_state_restore_simulation(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("Node.js is required for frontend persistence simulation test")
+
+        script = """
+        const assert = (condition, message) => { if (!condition) throw new Error(message); };
+
+        // Test subfolder URL parsing
+        function buildViewUrl(filename) {
+            const clean = filename.replace(/\\\\/g, "/");
+            const slashIdx = clean.lastIndexOf("/");
+            const subfolder = slashIdx !== -1 ? clean.slice(0, slashIdx) : "";
+            const baseName = slashIdx !== -1 ? clean.slice(slashIdx + 1) : clean;
+            return `/view?filename=${encodeURIComponent(baseName)}&type=input${subfolder ? `&subfolder=${encodeURIComponent(subfolder)}` : ""}`;
+        }
+
+        assert(buildViewUrl("test.mp4") === "/view?filename=test.mp4&type=input", "standard filename failed");
+        assert(buildViewUrl("sub/test.mp4") === "/view?filename=test.mp4&type=input&subfolder=sub", "subfolder failed");
+        assert(buildViewUrl("nested/folder/test.mp4") === "/view?filename=test.mp4&type=input&subfolder=nested%2Ffolder", "nested subfolder failed");
+        assert(buildViewUrl("win\\\\sub\\\\test.mp4") === "/view?filename=test.mp4&type=input&subfolder=win%2Fsub", "windows backslash failed");
+
+        // Test onConfigure restoration simulation
+        const fakeNode = {
+            widgets: [
+                { name: "splitter_state", value: JSON.stringify({ video: "restored.mp4", split_mode: "fuzzy" }) },
+                { name: "video", value: "none", options: { values: ["none", "other.mp4"] } }
+            ]
+        };
+
+        const stateWidget = fakeNode.widgets.find(w => w.name === "splitter_state");
+        const videoWidget = fakeNode.widgets.find(w => w.name === "video");
+        let restoredVideo = "";
+        if (stateWidget?.value) {
+            const s = JSON.parse(stateWidget.value);
+            if (s.video) restoredVideo = s.video;
+        }
+        if (!restoredVideo && videoWidget?.value && videoWidget.value !== "none") {
+            restoredVideo = videoWidget.value;
+        }
+        if (restoredVideo && videoWidget) {
+            if (videoWidget.options?.values && !videoWidget.options.values.includes(restoredVideo)) {
+                videoWidget.options.values.push(restoredVideo);
+            }
+            videoWidget.value = restoredVideo;
+        }
+
+        assert(videoWidget.value === "restored.mp4", "videoWidget.value was not restored from splitter_state");
+        assert(videoWidget.options.values.includes("restored.mp4"), "restored video not pushed to options.values");
         """
         result = subprocess.run(
             [node, "--input-type=module", "--eval", script],

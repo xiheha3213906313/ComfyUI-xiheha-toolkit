@@ -13,7 +13,15 @@ validation_agent: "Codex"
 validation_configured_at: 2026-01-01T12:00:00+08:00
 ```
 
-During initial profile creation, ask the user to choose one level. Give the short descriptions below and recommend `medium` when the user has no preference. Record the exact model label or identifier and current coding-agent host name exposed by the host, runtime/system context, or user. A user-visible model selector label such as `Gemini 3.8 Flash` is sufficient for detecting switches. If either identity is unavailable, record `unknown`; never infer the coding agent from the selected model.
+During initial profile creation, ask the user to choose one level through the
+three-level structured-choice procedure in
+[user-input-tools.md](user-input-tools.md#three-level-validation-choice). Give
+the short descriptions below and recommend `medium`, but never persist it
+without an explicit answer. Record the exact model label or identifier and
+current coding-agent host name exposed by the host, runtime/system context, or
+user. A user-visible model selector label such as `Gemini 3.8 Flash` is
+sufficient for detecting switches. If either identity is unavailable, record
+`unknown`; never infer the coding agent from the selected model.
 
 Persist a choice or later change with:
 
@@ -40,8 +48,14 @@ Required baseline:
 - read the profile, current target, call sites, and working-tree status;
 - search changed identifiers;
 - run changed-file syntax/compile checks;
-- run an existing focused regression test when one is directly relevant;
+- when behavior changes, add or update a focused regression test that would
+  fail before the change and pass after it when practical;
 - review the diff and report anything not run.
+
+If no suitable harness exists or an automated regression test would be
+disproportionate, run the highest-signal practical alternative and state why
+the regression test was not added. Do not treat the absence of an existing
+test as evidence that testing is unnecessary.
 
 The full suite, controlled import, and live UI are optional unless the changed risk requires them.
 
@@ -54,7 +68,9 @@ Default for ordinary node development. Guide the model toward relevant coverage 
 In addition to the baseline:
 
 - make a compact risk-to-evidence plan before implementation;
-- run targeted tests and the practical repository suite for affected layers;
+- run targeted tests and the practical repository suite for every affected
+  layer, using the selection guidance in
+  [validation.md](validation.md#affected-layer-selection-for-medium);
 - compile/check all affected Python and frontend modules;
 - use controlled plugin import for node registration or route changes when available;
 - perform only the conditional manual checks triggered by the change.
@@ -67,9 +83,17 @@ In addition to `medium`:
 
 - follow project commands and environment preflight exactly;
 - run the complete configured suite and repository-wide syntax checks;
-- perform controlled import plus all applicable risk-specific edge cases;
-- execute the full relevant manual ComfyUI path when safe and available;
+- perform controlled import when applicable and cover all edge cases directly
+  tied to the changed risks, including relevant boundary, compatibility,
+  concurrency, and persistence behavior;
+- execute the full relevant manual ComfyUI path when safe and available, or
+  report it as not run with the concrete blocker;
 - explicitly reconcile every cross-layer mirror and report all corrected failed attempts.
+
+`careful` is not permission to run destructive, networked, credentialed,
+high-cost GPU, migration, or user-state-disrupting checks without the required
+authorization and prerequisites. Broader coverage must remain relevant to the
+change.
 
 ## Risk floors
 
@@ -81,14 +105,23 @@ The configured level is a default, not permission to skip evidence needed for a 
 - path containment, network access, authentication, secrets, or external services;
 - concurrency where stale completion could discard newer user edits.
 
-Escalating task-local checks does not silently change the saved default. Tell the user briefly when a risk floor causes extra validation.
+Risk floors are additive and local to the affected hazard. They do not promote
+the whole task to `careful` or require unrelated careful-level checks.
+Escalating task-local checks does not silently change the saved default. Tell
+the user briefly when a risk floor causes extra validation.
 
 ## Model changes and conversation reminders
 
 `check_project_profile.py` returns a machine-readable action inside `validation`:
 
-- `choose_validation_strategy` with `blocking: true`: configuration is absent or invalid. Ask the user to select `simple`, `medium`, or `careful`, wait, and persist it.
-- `confirm_validation_strategy` with `blocking: true`: models mismatch, the configured model is unknown, or the current model is unavailable. State the available model IDs and saved level, ask which level to use, and wait. Bind a known current model when persisting; never bind a guess.
+- `choose_validation_strategy` with `blocking: true`: configuration is absent
+  or invalid. Use the native three-level structured choice when available,
+  wait for an explicit answer, and persist it.
+- `confirm_validation_strategy` with `blocking: true`: models mismatch, the
+  configured model is unknown, or the current model is unavailable. State the
+  available model IDs and saved level, use the same three-level structured
+  choice, and wait. Bind a known current model when persisting; never bind a
+  guess.
 - `continue` with `blocking: false`: configured and current models match. On the first project-related turn of a genuinely new conversation, remind the user of the saved level in one short non-blocking sentence and continue. Later tasks in that conversation continue silently.
 
 Unknown actions or contradictory `action`/`blocking` values are blocking configuration errors; do not infer permission to edit.
@@ -99,4 +132,8 @@ A new conversation means no earlier visible turn has discussed or modified this 
 
 Do not judge the new model as stronger or weaker unless product metadata explicitly says so. The user chooses the persistent level; task risk still determines mandatory safety evidence.
 
-Follow the blocking-question protocol in `SKILL.md`: use the host's native structured choice UI when available. Otherwise put the single plain-text question in the `final` response and end the turn; do not place it in commentary or run another command before the user's next message.
+Follow the blocking-question protocol in `SKILL.md` and the dedicated
+[three-level choice procedure](user-input-tools.md#three-level-validation-choice).
+Use the host's native structured choice UI when available. Otherwise put the
+single plain-text question in the `final` response and end the turn; do not
+place it in commentary or run another command before the user's next message.

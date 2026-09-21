@@ -64,7 +64,14 @@ Use these headings and omit a table only when the plugin truly lacks that surfac
 12. `## Profile maintenance rules`
    - Which structural changes require updating this file.
 
-An optional `## UI and design rules` section may record durable, project-specific conventions explicitly established by the user, existing design documentation, or consistently enforced source. Examples include localization policy, button/icon style, status replacement semantics, minimum layout constraints, and permitted customization boundaries. Do not infer personal preferences from one implementation or promote them into universal ComfyUI rules.
+An optional `## UI and design rules` section may record durable,
+project-specific conventions explicitly established by the user, existing
+design documentation, or consistently enforced source. Keep cross-project user
+defaults in the skill's dedicated `user-preferences.md` instead of copying them
+into every project profile. Use this profile section only for project-specific
+rules, refinements, or overrides such as an established design system, status
+semantics, minimum layout constraints, or compatibility boundaries. Do not
+infer preferences from one implementation or another model's report.
 
 ## Quality rules
 

@@ -35,8 +35,14 @@ The validation gate applies before plugin implementation or behavioral changes, 
 
 For gated work, follow the returned `validation.action` instead of reconstructing the state from prose:
 
-- `choose_validation_strategy`: explain `simple`, `medium`, and `careful`, ask once, stop, then persist the answer and a trustworthy current model with `scripts/set_validation_strategy.py`.
-- `confirm_validation_strategy`: state the configured/current models and saved level, ask which level to use, and stop. Persist the answer with the current model when its identity is trustworthy; never bind a guessed identifier.
+- `choose_validation_strategy`: use the native three-level structured choice
+  defined in `references/user-input-tools.md`, stop until an explicit answer
+  returns, then persist it and a trustworthy current model with
+  `scripts/set_validation_strategy.py`.
+- `confirm_validation_strategy`: state the configured/current models and saved
+  level, use the same native three-level structured choice, and stop until an
+  explicit answer returns. Persist it with the current model when its identity
+  is trustworthy; never bind a guessed identifier.
 - `continue`: on the first project-related turn of a genuinely new conversation, briefly remind the user of the active level and continue without pausing. Later tasks in that conversation continue silently.
 
 A missing or invalid profile has no usable validation action; the bootstrap procedure collects the choice instead. Treat an unknown action as blocking and read [references/validation-strategies.md](references/validation-strategies.md) before proceeding.
@@ -50,6 +56,10 @@ Do not silently substitute README files, `AGENTS.md`, memory, or guesses for the
 - For any code change or review, read [references/change-workflow.md](references/change-workflow.md).
 - When adding or changing nodes, inputs, outputs, custom types, list nodes, lazy nodes, execution return values, model/latent data, or registrations, also read [references/node-contracts.md](references/node-contracts.md).
 - When changing JavaScript, TypeScript, widgets, DOM UI, LiteGraph hooks, routes, serialization, previews, or browser/backend payloads, also read [references/frontend-and-api.md](references/frontend-and-api.md).
+- When creating or changing user-facing UI, labels, messages, localization, or
+  layout, also read [references/user-preferences.md](references/user-preferences.md)
+  and apply its confirmed defaults after higher-priority task and project
+  requirements.
 - When diagnosing ComfyUI theme colors, popup seams, DOM-over-canvas appearance, node whitespace, or DOM widget sizing, also read [references/frontend-visual-debugging.md](references/frontend-visual-debugging.md).
 - Before claiming completion, read and execute [references/validation.md](references/validation.md).
 - When a task reads, rewrites, saves, creates, or batch-updates user-owned files, also read [references/file-writing.md](references/file-writing.md).

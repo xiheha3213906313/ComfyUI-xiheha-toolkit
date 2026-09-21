@@ -10,7 +10,7 @@ from .nodes.prompt_config_editor import PromptConfigEditor
 from .nodes.smart_video_splitter import SmartVideoSplitter
 from .server import register_routes
 
-__version__ = "0.8.1"
+__version__ = "0.8.2"
 
 NODE_CLASS_MAPPINGS = {
     "XH_StackSource": StackSource,

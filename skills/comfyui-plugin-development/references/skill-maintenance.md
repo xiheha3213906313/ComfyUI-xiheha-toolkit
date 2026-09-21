@@ -34,8 +34,11 @@ Classify each proposed change before editing:
 2. **Conditional technique:** useful only for certain architectures, versions,
    risks, or validation levels. State its trigger and limits instead of making
    it universal.
-3. **Project fact or user preference:** belongs in a project's profile only
-   after the user confirms it; do not turn it into a generic skill rule.
+3. **Project fact or preference:** project-specific facts and preferences belong
+   in that project's profile after confirmation. A cross-project personal
+   default belongs in this skill's dedicated `user-preferences.md` only after
+   the user explicitly confirms that wider scope; do not turn either kind into
+   a universal ComfyUI rule.
 4. **Unsupported or incorrect claim:** verify it, correct its premise, or omit
    it. Do not preserve a proposed solution merely because the observed symptom
    was real.
@@ -65,7 +68,8 @@ tool call, command, edit, or implementation assumption.
 - Remove or consolidate obsolete guidance when a better rule supersedes it.
   Do not accumulate every incident as a new global checklist item.
 - Preserve explicit user intent. A task example does not establish a personal
-  preference or universal project rule without confirmation.
+  preference, cross-project default, or universal project rule without
+  confirmation. Current-task requirements always override stored defaults.
 
 For helper-script changes, keep command-line names consistent where practical,
 provide useful errors, avoid assuming one operating system, and add behavioral
