@@ -8,7 +8,7 @@ remind_after: null
 analysis_scope: full-static
 validation_level: simple
 validation_model: "Gemini 3.8 Flash (High)"
-validation_configured_at: 2026-09-21T21:22:29.772353+08:00
+validation_configured_at: 2026-09-21T23:41:54.878788+08:00
 validation_agent: "Antigravity"
 ---
 
@@ -141,10 +141,10 @@ validation_agent: "Antigravity"
 | --- | --- |
 | 实现/显示名 | `nodes/smart_video_splitter.py::SmartVideoSplitter` / `智能视频分割器` |
 | 分类/函数 | `xiheha-工具箱/视频` / `process` |
-| 必选输入（全部为 Widget，无连线端口） | `video`: 视频选择；`force_rate`: FLOAT，默认 0；`custom_width`: INT，默认 0；`custom_height`: INT，默认 540；`format`: 格式选择；`split_mode`: 模糊/精确；`fuzzy_min`: 最短时长；`target_duration`: 目标时长；`fuzzy_max`: 最长时长；`algorithm`: 检测模式，三档为智能自适应/快速内容/高运动抑制；`sensitivity`: 灵敏度；`cut_threshold`: 切镜阈值；`peak_prominence`: 突变显著度 |
+| 必选输入（全部为 Widget，无连线端口） | `video`: 视频选择；`force_rate`: FLOAT，默认 0；`custom_width`: INT，默认 0；`custom_height`: INT，默认 540；`format`: 格式选择；`split_mode`: `fuzzy`/目标（默认）、`scene`/模糊、`exact`/精确；`fuzzy_min`: 最短时长；`target_duration`: 目标时长（`scene` 中保留但不参与计算）；`fuzzy_max`: 最长时长；`algorithm`: 检测模式，三档为智能自适应/快速内容/高运动抑制；`sensitivity`: 灵敏度；`cut_threshold`: 切镜阈值；`peak_prominence`: 突变显著度 |
 | 隐藏输入 | `unique_id`: `UNIQUE_ID`；`splitter_state`: `STRING` |
 | 输出（顺序固定） | `SMART_VIDEO_STREAM`/`视频流`；`AUDIO`/`音频`；`INT`/`帧数` |
-| 行为 | `core/video_pipeline.py` 统一路径解析、参数规范化、尺寸、分段、切片和 manifest；模糊模式组合颜色/亮度/边缘/感知哈希并检测硬切和渐变，智能与高运动模式按不同门槛使用光流抑制可解释运镜；精确模式按帧固定间隔切分；节点执行允许复用匹配 manifest，前端主动计算强制重算 |
+| 行为 | `core/video_pipeline.py` 统一路径解析、参数规范化、尺寸、分段、切片和 manifest；目标/模糊模式组合颜色/亮度/边缘/感知哈希并检测硬切和渐变，智能与高运动模式按不同门槛使用光流抑制可解释运镜；`fuzzy` 按目标距离选点，`scene` 在最低时长后采用最早可靠切点且无候选时按最长时长兜底，两者均使用一步前瞻；扫描窗口使用完整渐变上下文抑制边缘假候选；精确模式按帧固定间隔切分；节点执行只复用参数和内部修订标记均匹配的 manifest，前端主动计算强制重算 |
 | 持久状态 | `splitter_state` 记录当前选定/上传的视频路径（`video`）、分段模式、最短、目标与最长时长，工作流载入/未手动保存刷新时无损还原 |
 | 前端 | `web/nodes/smart-video-splitter.js` 安装 `web/features/smart-video-splitter/` controller；提供上传/计算、3.0~15.0s 时间轴、参数显隐及统一生命周期清理 |
 
@@ -331,6 +331,7 @@ TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支�
 - 公共 ID、类型名、端口内部名、端口顺序和输出类型是工作流契约；除非用户明确接受破坏性变化，否则保持稳定。
 - 当前已完成一次性 `LPT_` → `XH_`、`LORA_PROMPT_SOURCE` → `XH_SOURCE`、旧来源字段 → `sources/source_name` 迁移；当前代码不保留旧名兼容分支。
 - 视频检测模式在 0.9.0 破坏性替换旧六算法枚举；旧值会明确报错，历史工作流需要重新选择三种新模式之一，输入内部名和顺序保持不变。
+- 视频分段模式保留旧 `fuzzy` 序列化值及其目标邻近选点语义，界面显示名为“目标”；新增 `scene` 表示不使用目标时长、在最低时长后采用最早可靠切点的“模糊”模式，默认仍为 `fuzzy`。
 - 不为外部 easy-use 标识创建本地别名，不修改其端口/widget 名。
 - 前端预览和 Python 队列执行必须同时实现同一行为；不能只修一侧。
 - `selection_state`、`token_state` 和 `editor_state` 属于保存工作流的状态，DOM controller 缓存不属于持久格式。
@@ -380,7 +381,7 @@ node --test tests\frontend\*.test.mjs
 6. merger 空端口占位和顺序正确；display 正负文本实时/执行后显示并保持两路透传。
 7. config editor 可切换模型/配置，修改后星号位于按钮右上边框，跨模型草稿保留；保存后原配置文件更新，“添加”转为新编号并继续出现新“添加”。
 8. 无 sidecar 时 editor 创建 `模型名.txt`；错误 sidecar、无模型源元数据时提示清晰且不无故阻断模型透传。
-9. 视频节点可选择及上传根目录/子目录视频；模糊/精确时间轴约束、主动计算、轮询进度、保存重开恢复、节点缩放和移除清理均正常。
+9. 视频节点可选择及上传根目录/子目录视频；目标/模糊/精确三种时间轴约束、主动计算、轮询进度、保存重开恢复、节点缩放和移除清理均正常。
 10. 浏览器控制台无新增异常，DOM、样式和全局监听器不重复安装或越出节点。
 
 ## Documentation and release bookkeeping

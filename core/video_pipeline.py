@@ -18,6 +18,8 @@ from .video_meta import DIMMAX, LOAD_FORMATS, get_video_metadata, target_size
 
 
 VIDEO_ALGORITHMS = DETECTION_MODES
+PIPELINE_CACHE_REVISION = "scene-mode-v3"
+_CACHE_REVISION_FILENAME = ".pipeline_revision"
 
 
 def _number(
@@ -67,8 +69,8 @@ class VideoSplitOptions:
             raise ValueError("format 不受支持")
 
         split_mode = values.get("split_mode", "fuzzy")
-        if not isinstance(split_mode, str) or split_mode not in {"fuzzy", "exact"}:
-            raise ValueError("split_mode 必须是 fuzzy 或 exact")
+        if not isinstance(split_mode, str) or split_mode not in {"fuzzy", "scene", "exact"}:
+            raise ValueError("split_mode 必须是 fuzzy、scene 或 exact")
 
         algorithm = values.get("algorithm", VIDEO_ALGORITHMS[0])
         if not isinstance(algorithm, str) or algorithm not in VIDEO_ALGORITHMS:
@@ -82,6 +84,13 @@ class VideoSplitOptions:
         )
         fuzzy_max = float(_number(values.get("fuzzy_max", 6.0), "fuzzy_max", minimum=3.0, maximum=15.0))
 
+        if split_mode == "scene":
+            normalized_min = min(fuzzy_min, fuzzy_max)
+            normalized_max = max(fuzzy_min, fuzzy_max)
+        else:
+            normalized_min = min(fuzzy_min, target_duration)
+            normalized_max = max(fuzzy_max, target_duration)
+
         return cls(
             force_rate=float(_number(values.get("force_rate", 0.0), "force_rate", minimum=0.0, maximum=120.0)),
             custom_width=int(
@@ -92,9 +101,9 @@ class VideoSplitOptions:
             ),
             format_name=format_name,
             split_mode=str(split_mode),
-            fuzzy_min=min(fuzzy_min, target_duration),
+            fuzzy_min=normalized_min,
             target_duration=target_duration,
-            fuzzy_max=max(fuzzy_max, target_duration),
+            fuzzy_max=normalized_max,
             algorithm=algorithm,
             sensitivity=float(
                 _number(values.get("sensitivity", 0.60), "sensitivity", minimum=0.0, maximum=1.0)
@@ -152,10 +161,14 @@ def _load_reusable_manifest(
     format_name: str,
     settings: dict[str, Any],
 ) -> dict[str, Any] | None:
-    manifest_path = os.path.join(get_node_cache_dir(node_id), "manifest.json")
+    cache_dir = get_node_cache_dir(node_id)
+    manifest_path = os.path.join(cache_dir, "manifest.json")
     if not os.path.isfile(manifest_path):
         return None
     try:
+        revision = Path(cache_dir, _CACHE_REVISION_FILENAME).read_text(encoding="utf-8").strip()
+        if revision != PIPELINE_CACHE_REVISION:
+            return None
         with open(manifest_path, "r", encoding="utf-8") as handle:
             cached = json.load(handle)
         source = cached.get("source", {})
@@ -173,6 +186,20 @@ def _load_reusable_manifest(
     except (OSError, TypeError, ValueError, json.JSONDecodeError):
         return None
     return None
+
+
+def _write_cache_revision(cache_dir: object) -> None:
+    """Mark generated cache without changing the public SMART_VIDEO_STREAM shape."""
+    if not isinstance(cache_dir, str) or not cache_dir:
+        return
+    try:
+        Path(cache_dir, _CACHE_REVISION_FILENAME).write_text(
+            PIPELINE_CACHE_REVISION,
+            encoding="utf-8",
+        )
+    except OSError:
+        # A missing marker only disables reuse on the next run; the fresh result remains valid.
+        return
 
 
 def run_video_split(
@@ -229,6 +256,7 @@ def run_video_split(
                 cut_threshold=options.cut_threshold,
                 peak_prominence=options.peak_prominence,
                 progress_callback=progress_callback,
+                selection_policy="earliest" if options.split_mode == "scene" else "target",
             )
         stream = cut_and_cache_segments(
             node_id=cache_key,
@@ -242,6 +270,7 @@ def run_video_split(
             settings=settings,
             progress_callback=progress_callback,
         )
+        _write_cache_revision(stream.get("cache_dir"))
     return stream, meta
 
 

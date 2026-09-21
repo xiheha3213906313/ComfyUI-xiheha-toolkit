@@ -28,15 +28,19 @@ export function createTimeline({ onChange }) {
     modeSwitch.className = "xh-seg-switch";
     modeSwitch.setAttribute("role", "group");
     modeSwitch.setAttribute("aria-label", "分段模式");
-    const fuzzyTab = document.createElement("button");
-    fuzzyTab.className = "xh-seg-item";
-    fuzzyTab.type = "button";
-    fuzzyTab.textContent = "模糊";
+    const targetTab = document.createElement("button");
+    targetTab.className = "xh-seg-item";
+    targetTab.type = "button";
+    targetTab.textContent = "目标";
+    const sceneTab = document.createElement("button");
+    sceneTab.className = "xh-seg-item";
+    sceneTab.type = "button";
+    sceneTab.textContent = "模糊";
     const exactTab = document.createElement("button");
     exactTab.className = "xh-seg-item";
     exactTab.type = "button";
     exactTab.textContent = "精确";
-    modeSwitch.append(fuzzyTab, exactTab);
+    modeSwitch.append(targetTab, sceneTab, exactTab);
     header.append(heading, modeSwitch);
     panel.appendChild(header);
 
@@ -147,7 +151,8 @@ export function createTimeline({ onChange }) {
             emitMove(name, nextValue);
         });
     }
-    fuzzyTab.addEventListener("click", () => onChange(setSplitMode(state, "fuzzy")));
+    targetTab.addEventListener("click", () => onChange(setSplitMode(state, "fuzzy")));
+    sceneTab.addEventListener("click", () => onChange(setSplitMode(state, "scene")));
     exactTab.addEventListener("click", () => onChange(setSplitMode(state, "exact")));
     track.addEventListener("pointerdown", (event) => {
         if (event.target !== track && event.target !== rail && event.target !== range) return;
@@ -161,20 +166,26 @@ export function createTimeline({ onChange }) {
     function render(nextState) {
         state = nextState;
         const positions = timelinePositions(state);
-        const fuzzy = state.split_mode === "fuzzy";
-        panel.classList.toggle("is-exact", !fuzzy);
-        fuzzyTab.classList.toggle("active", fuzzy);
-        exactTab.classList.toggle("active", !fuzzy);
-        fuzzyTab.setAttribute("aria-pressed", String(fuzzy));
-        exactTab.setAttribute("aria-pressed", String(!fuzzy));
-        handles.min.style.display = fuzzy ? "block" : "none";
-        handles.max.style.display = fuzzy ? "block" : "none";
+        const targetMode = state.split_mode === "fuzzy";
+        const sceneMode = state.split_mode === "scene";
+        const exactMode = state.split_mode === "exact";
+        const rangedMode = targetMode || sceneMode;
+        panel.classList.toggle("is-exact", exactMode);
+        targetTab.classList.toggle("active", targetMode);
+        sceneTab.classList.toggle("active", sceneMode);
+        exactTab.classList.toggle("active", exactMode);
+        targetTab.setAttribute("aria-pressed", String(targetMode));
+        sceneTab.setAttribute("aria-pressed", String(sceneMode));
+        exactTab.setAttribute("aria-pressed", String(exactMode));
+        handles.min.style.display = rangedMode ? "block" : "none";
+        handles.target.style.display = sceneMode ? "none" : "block";
+        handles.max.style.display = rangedMode ? "block" : "none";
         range.style.display = "block";
         handles.min.style.left = `${positions.minimum}%`;
         handles.target.style.left = `${positions.target}%`;
         handles.max.style.left = `${positions.maximum}%`;
-        range.style.left = fuzzy ? `${positions.minimum}%` : "0";
-        range.style.width = fuzzy
+        range.style.left = rangedMode ? `${positions.minimum}%` : "0";
+        range.style.width = rangedMode
             ? `${Math.max(0, positions.maximum - positions.minimum)}%`
             : `${positions.target}%`;
         const values = {
@@ -183,22 +194,37 @@ export function createTimeline({ onChange }) {
             max: state.fuzzy_max,
         };
         for (const [name, handle] of Object.entries(handles)) {
-            const minimum = name === "max"
-                ? Math.max(state.target_duration, round1(state.fuzzy_min + MIN_EDGE_GAP))
-                : name === "target" && fuzzy ? state.fuzzy_min
-                    : MIN_RANGE;
-            const maximum = name === "min"
-                ? Math.min(state.target_duration, round1(state.fuzzy_max - MIN_EDGE_GAP))
-                : name === "target" && fuzzy ? state.fuzzy_max
-                    : MAX_RANGE;
+            let minimum = MIN_RANGE;
+            let maximum = MAX_RANGE;
+            if (sceneMode && name === "min") maximum = round1(state.fuzzy_max - MIN_EDGE_GAP);
+            if (sceneMode && name === "max") minimum = round1(state.fuzzy_min + MIN_EDGE_GAP);
+            if (targetMode && name === "min") {
+                maximum = Math.min(state.target_duration, round1(state.fuzzy_max - MIN_EDGE_GAP));
+            }
+            if (targetMode && name === "target") {
+                minimum = state.fuzzy_min;
+                maximum = state.fuzzy_max;
+            }
+            if (targetMode && name === "max") {
+                minimum = Math.max(state.target_duration, round1(state.fuzzy_min + MIN_EDGE_GAP));
+            }
             handle.setAttribute("aria-valuemin", String(minimum));
             handle.setAttribute("aria-valuemax", String(maximum));
             handle.setAttribute("aria-valuenow", values[name].toFixed(1));
             handle.setAttribute("aria-valuetext", `${values[name].toFixed(1)} 秒`);
         }
         labels.textContent = "";
-        if (fuzzy) {
+        if (targetMode) {
             for (const [label, value] of [["最短", state.fuzzy_min], ["目标", state.target_duration], ["最长", state.fuzzy_max]]) {
+                const stat = document.createElement("span");
+                stat.append(`${label}: `);
+                const bold = document.createElement("b");
+                bold.textContent = `${value.toFixed(1)}s`;
+                stat.appendChild(bold);
+                labels.appendChild(stat);
+            }
+        } else if (sceneMode) {
+            for (const [label, value] of [["最短", state.fuzzy_min], ["最长", state.fuzzy_max]]) {
                 const stat = document.createElement("span");
                 stat.append(`${label}: `);
                 const bold = document.createElement("b");

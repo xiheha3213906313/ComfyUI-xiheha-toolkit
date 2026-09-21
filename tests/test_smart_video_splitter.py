@@ -20,6 +20,7 @@ from core.scene_detector import (
     scan_window_cuts,
     select_best_cut,
     split_video_exact,
+    split_video_fuzzy,
 )
 from core.scene_metrics import (
     DETECTION_MODES,
@@ -79,6 +80,8 @@ class TestSmartVideoSplitterContract(unittest.TestCase):
         self.assertEqual(req["custom_width"][1]["default"], 0)
         self.assertEqual(req["custom_height"][1]["default"], 540)
         self.assertEqual(req["format"][1]["default"], "AnimatedDiff")
+        self.assertEqual(req["split_mode"][0], ["fuzzy", "scene", "exact"])
+        self.assertEqual(req["split_mode"][1]["default"], "fuzzy")
         self.assertEqual(req["fuzzy_min"][1]["default"], 4.0)
         self.assertEqual(req["target_duration"][1]["default"], 5.0)
         self.assertEqual(req["fuzzy_max"][1]["default"], 6.0)
@@ -246,8 +249,10 @@ class TestSceneDetectionMetrics(unittest.TestCase):
 class _SyntheticFrameReader:
     def __init__(self, frames):
         self.frames = frames
+        self.requested = []
 
     def get_frame(self, frame_idx):
+        self.requested.append(frame_idx)
         return self.frames[frame_idx] if 0 <= frame_idx < len(self.frames) else None
 
 
@@ -300,6 +305,26 @@ class TestTemporalTransitionDetection(unittest.TestCase):
         gradual = [item for item in candidates if item["transition"] == "dissolve"]
         self.assertEqual(len(gradual), 1)
 
+    def test_window_scan_uses_full_dissolve_context_and_filters_outside_cut(self):
+        frames = [self.first.copy() for _ in range(12)]
+        frames.extend(self.second.copy() for _ in range(9))
+        reader = _SyntheticFrameReader(frames)
+        candidates = scan_window_cuts(
+            reader,
+            5,
+            10,
+            8,
+            FAST_DETECTION,
+            0.60,
+            0.55,
+            0.12,
+            effective_fps=10.0,
+        )
+        self.assertIn(0, reader.requested)
+        self.assertIn(16, reader.requested)
+        self.assertTrue(all(5 <= item["frame"] <= 10 for item in candidates))
+        self.assertFalse(any(item["frame"] == 12 for item in candidates))
+
 
 class TestCandidateSelection(unittest.TestCase):
     """Verify priority rules for choosing cut points."""
@@ -316,12 +341,244 @@ class TestCandidateSelection(unittest.TestCase):
         self.assertEqual(cut, 148)
         self.assertEqual(cut_type, "strong_scene")
 
+    def test_near_normal_cut_beats_far_strong_cut(self):
+        candidates = [
+            {"frame": 130, "score": 0.92, "prominence": 0.7, "is_strong": True, "dist_to_target": 20},
+            {"frame": 148, "score": 0.52, "prominence": 0.2, "is_strong": False, "dist_to_target": 2},
+        ]
+        cut, score, cut_type = select_best_cut(candidates, 150, 120, 180)
+        self.assertEqual(cut, 148)
+        self.assertEqual(score, 0.52)
+        self.assertEqual(cut_type, "scene")
+
+    def test_equal_distance_uses_strength_score_prominence_then_earlier_frame(self):
+        target = 150
+        strong_wins = [
+            {"frame": 140, "score": 0.70, "prominence": 0.4, "is_strong": False},
+            {"frame": 160, "score": 0.76, "prominence": 0.2, "is_strong": True},
+        ]
+        self.assertEqual(select_best_cut(strong_wins, target, 120, 180)[0], 160)
+
+        score_wins = [
+            {"frame": 140, "score": 0.80, "prominence": 0.2, "is_strong": True},
+            {"frame": 160, "score": 0.85, "prominence": 0.1, "is_strong": True},
+        ]
+        self.assertEqual(select_best_cut(score_wins, target, 120, 180)[0], 160)
+
+        prominence_wins = [
+            {"frame": 140, "score": 0.80, "prominence": 0.3, "is_strong": True},
+            {"frame": 160, "score": 0.80, "prominence": 0.2, "is_strong": True},
+        ]
+        self.assertEqual(select_best_cut(prominence_wins, target, 120, 180)[0], 140)
+
+        earlier_wins = [
+            {"frame": 140, "score": 0.80, "prominence": 0.2, "is_strong": True},
+            {"frame": 160, "score": 0.80, "prominence": 0.2, "is_strong": True},
+        ]
+        self.assertEqual(select_best_cut(earlier_wins, target, 120, 180)[0], 140)
+
     def test_fallback_when_no_candidates(self):
         target_frame = 150
         cut, score, cut_type = select_best_cut([], target_frame, 120, 180)
         self.assertEqual(cut, 150)
         self.assertEqual(score, 0.0)
         self.assertEqual(cut_type, "target_fallback")
+
+    def test_earliest_policy_uses_first_candidate_before_strength(self):
+        candidates = [
+            {"frame": 130, "score": 0.52, "prominence": 0.2, "is_strong": False},
+            {"frame": 160, "score": 0.95, "prominence": 0.8, "is_strong": True},
+        ]
+        cut, score, cut_type = select_best_cut(
+            candidates,
+            180,
+            120,
+            180,
+            "earliest",
+        )
+        self.assertEqual(cut, 130)
+        self.assertEqual(score, 0.52)
+        self.assertEqual(cut_type, "scene")
+
+    def test_earliest_policy_uses_confidence_for_same_frame_ties(self):
+        candidates = [
+            {"frame": 130, "score": 0.90, "prominence": 0.7, "is_strong": False},
+            {"frame": 130, "score": 0.76, "prominence": 0.2, "is_strong": True},
+        ]
+        self.assertEqual(
+            select_best_cut(candidates, 180, 120, 180, "earliest")[2],
+            "strong_scene",
+        )
+
+
+class TestFuzzySegmentationLookahead(unittest.TestCase):
+    """Verify scene-aware planning around minimum-duration blind zones."""
+
+    @staticmethod
+    def _candidate(frame, *, score=0.60, prominence=0.20, transition="hard", is_strong=False):
+        return {
+            "frame": frame,
+            "score": score,
+            "prominence": prominence,
+            "is_strong": is_strong,
+            "dist_to_target": 0,
+            "transition": transition,
+        }
+
+    def _split(
+        self,
+        candidates,
+        *,
+        total_frames=1200,
+        target_duration=10.0,
+        max_duration=10.0,
+        selection_policy="target",
+    ):
+        def fake_scan(**kwargs):
+            start = kwargs["window_start_frame"]
+            end = kwargs["window_end_frame"]
+            target = kwargs["target_frame"]
+            return [
+                {**candidate, "dist_to_target": abs(candidate["frame"] - target)}
+                for candidate in candidates
+                if start <= candidate["frame"] <= end
+            ]
+
+        with (
+            patch("core.scene_detector.FrameReader") as reader_cls,
+            patch("core.scene_detector.scan_window_cuts", side_effect=fake_scan),
+        ):
+            reader_cls.return_value.__enter__.return_value = object()
+            return split_video_fuzzy(
+                video_path="unused.mp4",
+                total_frames=total_frames,
+                effective_fps=30.0,
+                min_duration=3.0,
+                target_duration=target_duration,
+                max_duration=max_duration,
+                algorithm=SMART_DETECTION,
+                sensitivity=0.5,
+                cut_threshold=0.5,
+                peak_prominence=0.1,
+                selection_policy=selection_policy,
+            )
+
+    def test_lookahead_moves_previous_fallback_and_reserves_scene_cut(self):
+        segments = self._split([self._candidate(665)])
+        self.assertEqual(
+            [(item["start_frame"], item["end_frame"]) for item in segments[:3]],
+            [(0, 300), (300, 575), (575, 665)],
+        )
+        self.assertEqual([item["cut_type"] for item in segments[:3]], [
+            "target_fallback", "target_fallback", "scene",
+        ])
+
+    def test_no_scene_keeps_target_boundaries(self):
+        segments = self._split([], total_frames=900)
+        self.assertEqual(
+            [(item["start_frame"], item["end_frame"]) for item in segments],
+            [(0, 300), (300, 600), (600, 900)],
+        )
+
+    def test_sub_prominence_lookahead_candidate_is_ignored(self):
+        segments = self._split([self._candidate(665, prominence=0.05)], total_frames=900)
+        self.assertEqual(segments[1]["end_frame"], 600)
+
+    def test_reserved_dissolve_does_not_require_redetection(self):
+        segments = self._split([self._candidate(665, transition="dissolve")])
+        self.assertEqual(segments[1]["end_frame"], 575)
+        self.assertEqual(segments[2]["end_frame"], 665)
+        self.assertEqual(segments[2]["cut_type"], "scene")
+
+    def test_final_remainder_is_scanned_when_both_sides_can_meet_minimum(self):
+        segments = self._split([self._candidate(420)], total_frames=550)
+        self.assertEqual(
+            [(item["start_frame"], item["end_frame"]) for item in segments],
+            [(0, 300), (300, 420), (420, 550)],
+        )
+
+    def test_close_lookahead_candidates_prefer_target_distance(self):
+        segments = self._split([
+            self._candidate(640, score=0.52),
+            self._candidate(665, score=0.70),
+        ])
+        self.assertEqual(segments[1]["end_frame"], 550)
+        self.assertEqual(segments[2]["end_frame"], 640)
+
+    def test_equal_confidence_close_candidates_prefer_earlier_cut(self):
+        segments = self._split([
+            self._candidate(640, score=0.60),
+            self._candidate(665, score=0.60),
+        ])
+        self.assertEqual(segments[1]["end_frame"], 550)
+        self.assertEqual(segments[2]["end_frame"], 640)
+
+    def test_segments_remain_continuous_and_within_duration_constraints(self):
+        segments = self._split([self._candidate(665), self._candidate(1035)])
+        for index, segment in enumerate(segments):
+            if index:
+                self.assertEqual(segment["start_frame"], segments[index - 1]["end_frame"])
+            self.assertGreater(segment["frame_count"], 0)
+            if not segment["constraint_warning"]:
+                self.assertGreaterEqual(segment["frame_count"], 90)
+                self.assertLessEqual(segment["frame_count"], 300)
+
+    def test_scene_mode_uses_first_legal_cut(self):
+        segments = self._split(
+            [self._candidate(150), self._candidate(260, score=0.90, is_strong=True)],
+            total_frames=600,
+            target_duration=8.0,
+            selection_policy="earliest",
+        )
+        self.assertEqual(segments[0]["end_frame"], 150)
+
+    def test_scene_mode_ignores_target_duration_and_falls_back_at_maximum(self):
+        first = self._split(
+            [],
+            total_frames=900,
+            target_duration=4.0,
+            selection_policy="earliest",
+        )
+        second = self._split(
+            [],
+            total_frames=900,
+            target_duration=9.0,
+            selection_policy="earliest",
+        )
+        expected = [(0, 300), (300, 600), (600, 900)]
+        self.assertEqual([(item["start_frame"], item["end_frame"]) for item in first], expected)
+        self.assertEqual([(item["start_frame"], item["end_frame"]) for item in second], expected)
+
+    def test_scene_mode_keeps_one_step_lookahead(self):
+        segments = self._split(
+            [self._candidate(665, transition="dissolve")],
+            selection_policy="earliest",
+        )
+        self.assertEqual(
+            [(item["start_frame"], item["end_frame"]) for item in segments[:3]],
+            [(0, 300), (300, 575), (575, 665)],
+        )
+        self.assertEqual(segments[2]["cut_type"], "scene")
+
+    def test_scene_mode_tail_uses_earliest_cut_and_preserves_minimum(self):
+        segments = self._split(
+            [self._candidate(420), self._candidate(450, score=0.9, is_strong=True)],
+            total_frames=550,
+            selection_policy="earliest",
+        )
+        self.assertEqual(
+            [(item["start_frame"], item["end_frame"]) for item in segments],
+            [(0, 300), (300, 420), (420, 550)],
+        )
+
+    def test_scene_mode_skips_cut_inside_next_minimum_window(self):
+        segments = self._split(
+            [self._candidate(150), self._candidate(220)],
+            total_frames=600,
+            selection_policy="earliest",
+        )
+        self.assertEqual(segments[0]["end_frame"], 150)
+        self.assertNotIn(220, [item["end_frame"] for item in segments])
 
 
 class TestExactModeSegmentation(unittest.TestCase):

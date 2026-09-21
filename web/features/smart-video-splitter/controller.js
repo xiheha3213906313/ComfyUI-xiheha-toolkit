@@ -7,7 +7,8 @@ import { registerCustomTooltip, unregisterCustomTooltip } from "../../shared/too
 import { MIN_HEIGHT, MIN_WIDTH, preserveNodeSize } from "../../nodes/smart-video-splitter-size.js";
 import { apiUrl, getSplitStatus, getVideoInfo, splitVideo, uploadVideo } from "./api.js";
 import {
-    buildSplitPayload, normalizeSplitterState, parseSplitterState, serializeSplitterState, videoViewPath,
+    buildSplitPayload, normalizeSplitterState, parseSplitterState, serializeSplitterState,
+    usesSceneDetection, videoViewPath,
 } from "./state.js";
 import { createSplitterView } from "./view.js";
 
@@ -106,7 +107,7 @@ export function createSmartVideoSplitterController(node, { customTooltip = false
         updateWidgetVisibility({ notify = true } = {}) {
             for (const name of DETECTION_WIDGETS) {
                 const widget = widgetByName(node, name);
-                if (this.state.split_mode === "fuzzy") showWidget(widget);
+                if (usesSceneDetection(this.state.split_mode)) showWidget(widget);
                 else hideWidget(widget);
             }
             resizeNodeToFit(node);

@@ -24,18 +24,24 @@ function finite(value, fallback) {
 }
 
 export function normalizeSplitterState(value = {}) {
-    const splitMode = value?.split_mode === "exact" ? "exact" : "fuzzy";
+    const splitMode = ["fuzzy", "scene", "exact"].includes(value?.split_mode)
+        ? value.split_mode
+        : "fuzzy";
     let target = clamp(round1(finite(value?.target_duration, DEFAULT_SPLITTER_STATE.target_duration)), MIN_RANGE, MAX_RANGE);
     let minimum = clamp(round1(finite(value?.fuzzy_min, DEFAULT_SPLITTER_STATE.fuzzy_min)), MIN_RANGE, MAX_RANGE);
     let maximum = clamp(round1(finite(value?.fuzzy_max, DEFAULT_SPLITTER_STATE.fuzzy_max)), MIN_RANGE, MAX_RANGE);
-    minimum = Math.min(minimum, target);
-    maximum = Math.max(maximum, target);
+    if (splitMode === "scene") {
+        [minimum, maximum] = [Math.min(minimum, maximum), Math.max(minimum, maximum)];
+    } else {
+        minimum = Math.min(minimum, target);
+        maximum = Math.max(maximum, target);
+    }
     if (round1(maximum - minimum) < MIN_EDGE_GAP) {
         const expandedMaximum = round1(minimum + MIN_EDGE_GAP);
         if (expandedMaximum <= MAX_RANGE) maximum = expandedMaximum;
         else minimum = round1(maximum - MIN_EDGE_GAP);
     }
-    target = clamp(target, minimum, maximum);
+    if (splitMode !== "scene") target = clamp(target, minimum, maximum);
     return {
         split_mode: splitMode,
         fuzzy_min: minimum,
@@ -64,6 +70,10 @@ export function setSplitMode(state, mode) {
     return normalizeSplitterState({ ...state, split_mode: mode });
 }
 
+export function usesSceneDetection(mode) {
+    return mode === "fuzzy" || mode === "scene";
+}
+
 export function moveTimelineHandle(state, handle, rawValue) {
     const current = normalizeSplitterState(state);
     const value = clamp(round1(Number(rawValue)), MIN_RANGE, MAX_RANGE);
@@ -72,6 +82,23 @@ export function moveTimelineHandle(state, handle, rawValue) {
         return handle === "target"
             ? normalizeSplitterState({ ...current, target_duration: value })
             : current;
+    }
+    if (current.split_mode === "scene") {
+        if (handle === "min") {
+            current.fuzzy_min = clamp(
+                value,
+                MIN_RANGE,
+                round1(current.fuzzy_max - MIN_EDGE_GAP),
+            );
+        }
+        if (handle === "max") {
+            current.fuzzy_max = clamp(
+                value,
+                round1(current.fuzzy_min + MIN_EDGE_GAP),
+                MAX_RANGE,
+            );
+        }
+        return normalizeSplitterState(current);
     }
     if (handle === "min") {
         const maximum = Math.min(current.target_duration, round1(current.fuzzy_max - MIN_EDGE_GAP));
@@ -89,6 +116,11 @@ export function closestTimelineHandle(state, rawValue) {
     const current = normalizeSplitterState(state);
     if (current.split_mode === "exact") return "target";
     const value = clamp(Number(rawValue), MIN_RANGE, MAX_RANGE);
+    if (current.split_mode === "scene") {
+        return Math.abs(value - current.fuzzy_min) <= Math.abs(value - current.fuzzy_max)
+            ? "min"
+            : "max";
+    }
     if (value < current.fuzzy_min) return "min";
     if (value > current.fuzzy_max) return "max";
     return "target";

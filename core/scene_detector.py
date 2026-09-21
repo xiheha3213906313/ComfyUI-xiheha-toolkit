@@ -163,7 +163,7 @@ def _detect_dissolves(
     if len(descriptors) < 7:
         return []
 
-    half_span = max(2, min(18, int(round(effective_fps * 0.30))))
+    half_span = _dissolve_half_span(effective_fps)
     provisional: list[tuple[int, dict[str, Any]]] = []
     for center in range(half_span, len(descriptors) - half_span):
         left = center - half_span
@@ -220,6 +220,11 @@ def _detect_dissolves(
     return candidates
 
 
+def _dissolve_half_span(effective_fps: float) -> int:
+    """Return the temporal half-window used by gradual-transition evidence."""
+    return max(2, min(18, int(round(effective_fps * 0.30))))
+
+
 def _merge_nearby_candidates(
     candidates: list[dict[str, Any]],
     effective_fps: float,
@@ -252,20 +257,30 @@ def scan_window_cuts(
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> list[dict[str, Any]]:
     """Scan frames in [window_start_frame, window_end_frame] to identify candidate scene cuts."""
-    if window_end_frame <= window_start_frame:
+    if window_end_frame < window_start_frame:
         return []
 
-    # Read previous boundary frame for diff
-    prev_frame = reader.get_frame(max(0, window_start_frame - 1))
+    requested_start = window_start_frame
+    requested_end = window_end_frame
+    # Dissolve prominence needs both the transition span and a baseline span.
+    # Keeping both on each side avoids creating gradual candidates merely because
+    # a legal segmentation window starts in the middle of ongoing motion.
+    peak_context = max(5, 2 * _dissolve_half_span(effective_fps))
+    analysis_start = max(1, requested_start - peak_context)
+    analysis_end = requested_end + peak_context
+
+    # Decode local context on both sides so boundary frames receive the same
+    # prominence evidence as candidates in the middle of a window.
+    prev_frame = reader.get_frame(analysis_start - 1)
     if prev_frame is None:
         return []
 
     frame_indices: list[int] = []
     scores: list[float] = []
-    descriptor_frames = [max(0, window_start_frame - 1)]
+    descriptor_frames = [analysis_start - 1]
     descriptors = [describe_frame(prev_frame)]
 
-    for f_idx in range(window_start_frame, window_end_frame + 1):
+    for f_idx in range(analysis_start, analysis_end + 1):
         curr_frame = reader.get_frame(f_idx)
         if curr_frame is None:
             break
@@ -280,8 +295,8 @@ def scan_window_cuts(
         descriptor_frames.append(f_idx)
         descriptors.append(current_descriptor)
         prev_frame = curr_frame
-        if progress_callback:
-            progress_callback(f_idx, window_end_frame)
+        if progress_callback and requested_start <= f_idx <= requested_end:
+            progress_callback(f_idx, requested_end)
 
     if not scores:
         return []
@@ -344,7 +359,49 @@ def scan_window_cuts(
             effective_fps,
         )
     )
-    return _merge_nearby_candidates(candidates, effective_fps)
+    eligible = [
+        candidate
+        for candidate in candidates
+        if requested_start <= int(candidate["frame"]) <= requested_end
+    ]
+    return _merge_nearby_candidates(eligible, effective_fps)
+
+
+def _candidate_target_key(
+    candidate: dict[str, Any],
+    target_frame: int,
+) -> tuple[int, int, float, float, int]:
+    """Rank by target distance; use confidence only to break equal distances."""
+    frame = int(candidate["frame"])
+    return (
+        abs(frame - target_frame),
+        0 if candidate.get("is_strong") else 1,
+        -float(candidate.get("score", 0.0)),
+        -float(candidate.get("prominence", 0.0)),
+        frame,
+    )
+
+
+def _candidate_earliest_key(candidate: dict[str, Any]) -> tuple[int, int, float, float]:
+    """Rank by first legal transition; use confidence only for same-frame ties."""
+    return (
+        int(candidate["frame"]),
+        0 if candidate.get("is_strong") else 1,
+        -float(candidate.get("score", 0.0)),
+        -float(candidate.get("prominence", 0.0)),
+    )
+
+
+def _candidate_selection_key(
+    candidate: dict[str, Any],
+    target_frame: int,
+    selection_policy: str,
+) -> tuple:
+    if selection_policy == "earliest":
+        return _candidate_earliest_key(candidate)
+    if selection_policy == "target":
+        return _candidate_target_key(candidate, target_frame)
+    raise ValueError("selection_policy must be target or earliest")
 
 
 def select_best_cut(
@@ -352,26 +409,37 @@ def select_best_cut(
     target_frame: int,
     window_start: int,
     window_end: int,
+    selection_policy: str = "target",
 ) -> tuple[int, float, str]:
-    """Select best cut from candidates according to priority rules."""
+    """Select a target-nearest or earliest accepted cut according to policy."""
     if not candidates:
         return target_frame, 0.0, "target_fallback"
 
-    strong_candidates = [c for c in candidates if c["is_strong"]]
-    if strong_candidates:
-        # Priority: multiple strong scene cuts -> choose one closest to target
-        best_strong = min(strong_candidates, key=lambda c: (c["dist_to_target"], -c["score"]))
-        return best_strong["frame"], best_strong["score"], "strong_scene"
-
-    # Evaluate normal candidates: balance between cut_score and distance to TARGET
-    span = max(1, window_end - window_start)
     best_candidate = min(
         candidates,
-        key=lambda c: (
-            (1.0 - c["score"]) * 0.4 + (c["dist_to_target"] / span) * 0.6
-        )
+        key=lambda item: _candidate_selection_key(item, target_frame, selection_policy),
     )
-    return best_candidate["frame"], best_candidate["score"], "scene"
+    cut_type = "strong_scene" if best_candidate.get("is_strong") else "scene"
+    return best_candidate["frame"], best_candidate["score"], cut_type
+
+
+def _reliable_lookahead_candidates(
+    candidates: list[dict[str, Any]],
+    peak_prominence: float,
+) -> list[dict[str, Any]]:
+    """Reject malformed or sub-prominence records from the preparatory-cut path."""
+    supported = {"hard", "fade", "dissolve"}
+    return [
+        candidate
+        for candidate in candidates
+        if candidate.get("transition") in supported
+        and float(candidate.get("score", 0.0)) > 0.0
+        and float(candidate.get("prominence", 0.0)) >= peak_prominence
+    ]
+
+
+def _scene_cut_type(candidate: dict[str, Any]) -> str:
+    return "strong_scene" if candidate.get("is_strong") else "scene"
 
 
 def split_video_fuzzy(
@@ -387,14 +455,22 @@ def split_video_fuzzy(
     peak_prominence: float,
     strong_cut_threshold: float = 0.75,
     progress_callback: Callable[[str, int, int], None] | None = None,
+    selection_policy: str = "target",
 ) -> list[dict[str, Any]]:
-    """Execute fuzzy segmentation with sliding window detection and tail backtracking."""
+    """Execute scene-aware segmentation with target or earliest-cut selection."""
+    if selection_policy not in {"target", "earliest"}:
+        raise ValueError("selection_policy must be target or earliest")
+
+    earliest_mode = selection_policy == "earliest"
     min_frames = max(1, int(round(min_duration * effective_fps)))
     target_frames = max(min_frames, int(round(target_duration * effective_fps)))
-    max_frames = max(target_frames, int(round(max_duration * effective_fps)))
+    requested_max_frames = int(round(max_duration * effective_fps))
+    max_frames = max(min_frames if earliest_mode else target_frames, requested_max_frames)
 
     # Short video handling
-    if total_frames <= target_frames or total_frames <= min_frames:
+    cannot_split_scene = earliest_mode and total_frames < 2 * min_frames
+    target_mode_single = not earliest_mode and total_frames <= target_frames
+    if total_frames <= min_frames or cannot_split_scene or target_mode_single:
         return [{
             "start_frame": 0,
             "end_frame": total_frames,
@@ -409,6 +485,7 @@ def split_video_fuzzy(
 
     segments: list[dict[str, Any]] = []
     window_candidates_history: list[dict[str, Any]] = []
+    reserved_candidate: dict[str, Any] | None = None
 
     with FrameReader(video_path) as reader:
         current_start = 0
@@ -416,8 +493,84 @@ def split_video_fuzzy(
         while current_start < total_frames:
             rem_frames = total_frames - current_start
 
-            # If remaining frames are already within [min_frames, max_frames] or close, take all as last segment
+            def _step_cb(cur, tot):
+                if progress_callback:
+                    progress_callback("analyzing", cur, total_frames)
+
+            # A lookahead transition is committed after its preparatory boundary.
+            # This also preserves gradual transitions that need context before their center.
+            if reserved_candidate is not None:
+                cut_frame = int(reserved_candidate["frame"])
+                frame_len = cut_frame - current_start
+                if min_frames <= frame_len <= max_frames:
+                    segments.append({
+                        "start_frame": current_start,
+                        "end_frame": cut_frame,
+                        "frame_count": frame_len,
+                        "start_time": round(current_start / effective_fps, 3),
+                        "end_time": round(cut_frame / effective_fps, 3),
+                        "duration": round(frame_len / effective_fps, 3),
+                        "cut_score": reserved_candidate["score"],
+                        "cut_type": _scene_cut_type(reserved_candidate),
+                        "constraint_warning": False,
+                    })
+                    current_start = cut_frame
+                    reserved_candidate = None
+                    continue
+                reserved_candidate = None
+
+            # A final remainder may still contain a scene cut when both resulting
+            # segments can satisfy the minimum duration.
             if rem_frames <= max_frames:
+                if rem_frames >= 2 * min_frames:
+                    tail_window_start = current_start + min_frames
+                    tail_window_end = total_frames - min_frames
+                    tail_target = (
+                        tail_window_start
+                        if earliest_mode
+                        else min(current_start + target_frames, tail_window_end)
+                    )
+                    tail_candidates = scan_window_cuts(
+                        reader=reader,
+                        window_start_frame=tail_window_start,
+                        window_end_frame=tail_window_end,
+                        target_frame=tail_target,
+                        algorithm=algorithm,
+                        sensitivity=sensitivity,
+                        cut_threshold=cut_threshold,
+                        peak_prominence=peak_prominence,
+                        effective_fps=effective_fps,
+                        strong_cut_threshold=strong_cut_threshold,
+                        progress_callback=_step_cb,
+                    )
+                    if tail_candidates:
+                        cut_frame, cut_score, cut_type = select_best_cut(
+                            tail_candidates,
+                            tail_target,
+                            tail_window_start,
+                            tail_window_end,
+                            selection_policy,
+                        )
+                        frame_len = cut_frame - current_start
+                        segments.append({
+                            "start_frame": current_start,
+                            "end_frame": cut_frame,
+                            "frame_count": frame_len,
+                            "start_time": round(current_start / effective_fps, 3),
+                            "end_time": round(cut_frame / effective_fps, 3),
+                            "duration": round(frame_len / effective_fps, 3),
+                            "cut_score": cut_score,
+                            "cut_type": cut_type,
+                            "constraint_warning": False,
+                        })
+                        window_candidates_history.append({
+                            "start": current_start,
+                            "candidates": tail_candidates,
+                            "cut": cut_frame,
+                        })
+                        current_start = cut_frame
+                        continue
+
                 warning = rem_frames < min_frames
                 segments.append({
                     "start_frame": current_start,
@@ -434,11 +587,7 @@ def split_video_fuzzy(
 
             w_start = current_start + min_frames
             w_end = min(total_frames - 1, current_start + max_frames)
-            target_cut = min(w_end, current_start + target_frames)
-
-            def _step_cb(cur, tot):
-                if progress_callback:
-                    progress_callback("analyzing", cur, total_frames)
+            target_cut = w_end if earliest_mode else min(w_end, current_start + target_frames)
 
             candidates = scan_window_cuts(
                 reader=reader,
@@ -453,8 +602,56 @@ def split_video_fuzzy(
                 strong_cut_threshold=strong_cut_threshold,
                 progress_callback=_step_cb,
             )
+            cut_frame, cut_score, cut_type = select_best_cut(
+                candidates,
+                target_cut,
+                w_start,
+                w_end,
+                selection_policy,
+            )
 
-            cut_frame, cut_score, cut_type = select_best_cut(candidates, target_cut, w_start, w_end)
+            # Search the blind zone only when the legal window had no scene cut.
+            should_look_ahead = cut_type == "target_fallback"
+            lookahead_start = w_end + 1
+            lookahead_end = min(total_frames - min_frames, w_end + min_frames)
+            if should_look_ahead and lookahead_start <= lookahead_end:
+                lookahead_candidates = scan_window_cuts(
+                    reader=reader,
+                    window_start_frame=lookahead_start,
+                    window_end_frame=lookahead_end,
+                    target_frame=target_cut,
+                    algorithm=algorithm,
+                    sensitivity=sensitivity,
+                    cut_threshold=cut_threshold,
+                    peak_prominence=peak_prominence,
+                    effective_fps=effective_fps,
+                    strong_cut_threshold=strong_cut_threshold,
+                    progress_callback=_step_cb,
+                )
+                lookahead_candidates = _reliable_lookahead_candidates(
+                    lookahead_candidates,
+                    peak_prominence,
+                )
+                future_candidate = min(
+                    lookahead_candidates,
+                    key=lambda item: _candidate_selection_key(
+                        item,
+                        target_cut,
+                        selection_policy,
+                    ),
+                    default=None,
+                )
+                if future_candidate is not None:
+                    future_frame = int(future_candidate["frame"])
+                    preparatory_cut = future_frame - min_frames
+                    can_prepare = (
+                        w_start <= preparatory_cut <= w_end
+                        and total_frames - future_frame >= min_frames
+                    )
+                    if cut_type == "target_fallback" and can_prepare:
+                        cut_frame = preparatory_cut
+                        cut_score = 0.0
+                        reserved_candidate = future_candidate
 
             # Check for tail conflict: if cut_frame leaves remaining frames < min_frames
             after_rem = total_frames - cut_frame
@@ -463,8 +660,14 @@ def split_video_fuzzy(
             if 0 < after_rem < min_frames:
                 # Tail optimization: try to find an alternative cut in candidates that keeps after_rem >= min_frames
                 valid_alt = None
-                span = max(1, w_end - w_start)
-                for alt in sorted(candidates, key=lambda c: abs(c["frame"] - target_cut)):
+                for alt in sorted(
+                    candidates,
+                    key=lambda item: _candidate_selection_key(
+                        item,
+                        target_cut,
+                        selection_policy,
+                    ),
+                ):
                     alt_rem = total_frames - alt["frame"]
                     if alt_rem >= min_frames or alt_rem == 0:
                         valid_alt = alt
