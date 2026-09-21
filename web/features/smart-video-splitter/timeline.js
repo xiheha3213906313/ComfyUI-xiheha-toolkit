@@ -1,5 +1,5 @@
 import {
-    MAX_RANGE, MIN_RANGE, clamp, closestTimelineHandle, moveTimelineHandle, round1,
+    MAX_RANGE, MIN_EDGE_GAP, MIN_RANGE, clamp, closestTimelineHandle, moveTimelineHandle, round1,
     setSplitMode, timelinePositions,
 } from "./state.js";
 
@@ -11,30 +11,51 @@ function durationFromPointer(track, event) {
 }
 
 export function createTimeline({ onChange }) {
-    const fragment = document.createDocumentFragment();
+    const panel = document.createElement("section");
+    panel.className = "xh-timeline-panel";
     const header = document.createElement("div");
     header.className = "xh-timeline-header";
+    const heading = document.createElement("div");
+    heading.className = "xh-timeline-heading";
     const title = document.createElement("div");
     title.className = "xh-timeline-title";
-    title.textContent = "分段时长 (秒)";
+    title.textContent = "分段时长";
+    const unit = document.createElement("span");
+    unit.className = "xh-timeline-unit";
+    unit.textContent = "秒";
+    heading.append(title, unit);
     const modeSwitch = document.createElement("div");
     modeSwitch.className = "xh-seg-switch";
-    const fuzzyTab = document.createElement("div");
+    modeSwitch.setAttribute("role", "group");
+    modeSwitch.setAttribute("aria-label", "分段模式");
+    const fuzzyTab = document.createElement("button");
     fuzzyTab.className = "xh-seg-item";
+    fuzzyTab.type = "button";
     fuzzyTab.textContent = "模糊";
-    const exactTab = document.createElement("div");
+    const exactTab = document.createElement("button");
     exactTab.className = "xh-seg-item";
+    exactTab.type = "button";
     exactTab.textContent = "精确";
     modeSwitch.append(fuzzyTab, exactTab);
-    header.append(title, modeSwitch);
-    fragment.appendChild(header);
+    header.append(heading, modeSwitch);
+    panel.appendChild(header);
 
     const wrap = document.createElement("div");
     wrap.className = "xh-timeline-wrap";
     const track = document.createElement("div");
     track.className = "xh-timeline-track";
+    const rail = document.createElement("div");
+    rail.className = "xh-timeline-rail";
     const range = document.createElement("div");
     range.className = "xh-timeline-range";
+    const ticks = document.createElement("div");
+    ticks.className = "xh-timeline-ticks";
+    for (let value = MIN_RANGE; value <= MAX_RANGE; value += 1) {
+        const tick = document.createElement("span");
+        tick.className = "xh-timeline-tick";
+        tick.style.left = `${((value - MIN_RANGE) / (MAX_RANGE - MIN_RANGE)) * 100}%`;
+        ticks.appendChild(tick);
+    }
     const handles = {
         min: document.createElement("div"),
         target: document.createElement("div"),
@@ -42,92 +63,170 @@ export function createTimeline({ onChange }) {
     };
     handles.min.className = "xh-handle";
     handles.min.title = "最短时长";
+    handles.min.setAttribute("role", "slider");
+    handles.min.setAttribute("tabindex", "0");
+    handles.min.setAttribute("aria-label", "最短时长");
     handles.target.className = "xh-handle-target";
     handles.target.title = "目标时长";
+    handles.target.setAttribute("role", "slider");
+    handles.target.setAttribute("tabindex", "0");
+    handles.target.setAttribute("aria-label", "目标时长");
     handles.max.className = "xh-handle";
     handles.max.title = "最长时长";
-    track.append(range, handles.min, handles.target, handles.max);
+    handles.max.setAttribute("role", "slider");
+    handles.max.setAttribute("tabindex", "0");
+    handles.max.setAttribute("aria-label", "最长时长");
+    rail.append(range, ticks);
+    track.append(rail, handles.min, handles.target, handles.max);
     wrap.appendChild(track);
-    fragment.appendChild(wrap);
+    panel.appendChild(wrap);
     const labels = document.createElement("div");
     labels.className = "xh-timeline-labels";
-    fragment.appendChild(labels);
+    panel.appendChild(labels);
 
     let state = null;
     let activeHandle = null;
+    let activePointerId = null;
     const emitMove = (handle, value) => {
         state = moveTimelineHandle(state, handle, value);
         onChange(state);
     };
     const onPointerMove = (event) => {
-        if (!activeHandle) return;
+        if (!activeHandle || (activePointerId != null && event.pointerId !== activePointerId)) return;
         const value = durationFromPointer(track, event);
         if (value != null) emitMove(activeHandle, value);
     };
-    const stopDragging = () => {
+    const onVisibilityChange = () => {
+        if (document.hidden) stopDragging();
+    };
+    const stopDragging = (event = null) => {
+        if (event?.pointerId != null && activePointerId != null && event.pointerId !== activePointerId) return;
+        const pointerId = activePointerId;
+        if (activeHandle) handles[activeHandle].classList.remove("dragging");
         activeHandle = null;
+        activePointerId = null;
         document.removeEventListener("pointermove", onPointerMove);
-        document.removeEventListener("pointerup", stopDragging);
-        document.removeEventListener("pointercancel", stopDragging);
+        document.removeEventListener("pointerup", stopDragging, true);
+        document.removeEventListener("pointercancel", stopDragging, true);
+        window.removeEventListener("blur", stopDragging);
+        document.removeEventListener("visibilitychange", onVisibilityChange);
+        if (pointerId != null && track.hasPointerCapture?.(pointerId)) {
+            track.releasePointerCapture(pointerId);
+        }
     };
     const startDragging = (event, handle) => {
         event.preventDefault();
         event.stopPropagation();
         stopDragging();
         activeHandle = handle;
+        activePointerId = event.pointerId;
+        handles[handle].classList.add("dragging");
+        track.setPointerCapture?.(event.pointerId);
         document.addEventListener("pointermove", onPointerMove);
-        document.addEventListener("pointerup", stopDragging);
-        document.addEventListener("pointercancel", stopDragging);
+        document.addEventListener("pointerup", stopDragging, true);
+        document.addEventListener("pointercancel", stopDragging, true);
+        window.addEventListener("blur", stopDragging);
+        document.addEventListener("visibilitychange", onVisibilityChange);
     };
+    track.addEventListener("lostpointercapture", stopDragging);
     for (const [name, handle] of Object.entries(handles)) {
         handle.addEventListener("pointerdown", (event) => startDragging(event, name));
+        handle.addEventListener("keydown", (event) => {
+            const value = name === "min" ? state.fuzzy_min
+                : name === "max" ? state.fuzzy_max
+                    : state.target_duration;
+            const step = event.shiftKey ? 1 : 0.1;
+            let nextValue = null;
+            if (event.key === "ArrowLeft" || event.key === "ArrowDown") nextValue = value - step;
+            if (event.key === "ArrowRight" || event.key === "ArrowUp") nextValue = value + step;
+            if (event.key === "Home") nextValue = MIN_RANGE;
+            if (event.key === "End") nextValue = MAX_RANGE;
+            if (nextValue == null) return;
+            event.preventDefault();
+            event.stopPropagation();
+            emitMove(name, nextValue);
+        });
     }
     fuzzyTab.addEventListener("click", () => onChange(setSplitMode(state, "fuzzy")));
     exactTab.addEventListener("click", () => onChange(setSplitMode(state, "exact")));
     track.addEventListener("pointerdown", (event) => {
-        if (event.target !== track && event.target !== range) return;
+        if (event.target !== track && event.target !== rail && event.target !== range) return;
         const value = durationFromPointer(track, event);
-        if (value != null) emitMove(closestTimelineHandle(state, value), value);
+        if (value == null) return;
+        const handle = closestTimelineHandle(state, value);
+        startDragging(event, handle);
+        emitMove(handle, value);
     });
 
     function render(nextState) {
         state = nextState;
         const positions = timelinePositions(state);
         const fuzzy = state.split_mode === "fuzzy";
+        panel.classList.toggle("is-exact", !fuzzy);
         fuzzyTab.classList.toggle("active", fuzzy);
         exactTab.classList.toggle("active", !fuzzy);
+        fuzzyTab.setAttribute("aria-pressed", String(fuzzy));
+        exactTab.setAttribute("aria-pressed", String(!fuzzy));
         handles.min.style.display = fuzzy ? "block" : "none";
         handles.max.style.display = fuzzy ? "block" : "none";
-        range.style.display = fuzzy ? "block" : "none";
+        range.style.display = "block";
         handles.min.style.left = `${positions.minimum}%`;
         handles.target.style.left = `${positions.target}%`;
         handles.max.style.left = `${positions.maximum}%`;
-        range.style.left = `${positions.minimum}%`;
-        range.style.width = `${Math.max(0, positions.maximum - positions.minimum)}%`;
+        range.style.left = fuzzy ? `${positions.minimum}%` : "0";
+        range.style.width = fuzzy
+            ? `${Math.max(0, positions.maximum - positions.minimum)}%`
+            : `${positions.target}%`;
+        const values = {
+            min: state.fuzzy_min,
+            target: state.target_duration,
+            max: state.fuzzy_max,
+        };
+        for (const [name, handle] of Object.entries(handles)) {
+            const minimum = name === "max"
+                ? Math.max(state.target_duration, round1(state.fuzzy_min + MIN_EDGE_GAP))
+                : name === "target" && fuzzy ? state.fuzzy_min
+                    : MIN_RANGE;
+            const maximum = name === "min"
+                ? Math.min(state.target_duration, round1(state.fuzzy_max - MIN_EDGE_GAP))
+                : name === "target" && fuzzy ? state.fuzzy_max
+                    : MAX_RANGE;
+            handle.setAttribute("aria-valuemin", String(minimum));
+            handle.setAttribute("aria-valuemax", String(maximum));
+            handle.setAttribute("aria-valuenow", values[name].toFixed(1));
+            handle.setAttribute("aria-valuetext", `${values[name].toFixed(1)} 秒`);
+        }
         labels.textContent = "";
         if (fuzzy) {
             for (const [label, value] of [["最短", state.fuzzy_min], ["目标", state.target_duration], ["最长", state.fuzzy_max]]) {
-                const span = document.createElement("span");
-                span.append(`${label}: `);
+                const stat = document.createElement("span");
+                stat.append(`${label}: `);
                 const bold = document.createElement("b");
                 bold.textContent = `${value.toFixed(1)}s`;
-                span.appendChild(bold);
-                labels.appendChild(span);
+                stat.appendChild(bold);
+                labels.appendChild(stat);
             }
         } else {
             const minimum = document.createElement("span");
-            minimum.style.color = "#718096";
-            minimum.textContent = "3.0s";
+            minimum.className = "xh-timeline-boundary";
+            minimum.textContent = `${MIN_RANGE.toFixed(1)}s`;
             const target = document.createElement("span");
             target.append("目标时长: ");
             const bold = document.createElement("b");
             bold.textContent = `${state.target_duration.toFixed(1)}s`;
             target.append(bold, " (固定切分)");
             const maximum = document.createElement("span");
-            maximum.style.color = "#718096";
-            maximum.textContent = "15.0s";
+            maximum.className = "xh-timeline-boundary";
+            maximum.textContent = `${MAX_RANGE.toFixed(1)}s`;
             labels.append(minimum, target, maximum);
         }
     }
-    return { element: fragment, render, dispose: stopDragging };
+    return {
+        element: panel,
+        render,
+        dispose() {
+            stopDragging();
+            track.removeEventListener("lostpointercapture", stopDragging);
+        },
+    };
 }

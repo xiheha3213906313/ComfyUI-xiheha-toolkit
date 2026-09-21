@@ -1,5 +1,6 @@
 export const MIN_RANGE = 3;
 export const MAX_RANGE = 15;
+export const MIN_EDGE_GAP = 0.2;
 
 export const DEFAULT_SPLITTER_STATE = Object.freeze({
     split_mode: "fuzzy",
@@ -29,6 +30,11 @@ export function normalizeSplitterState(value = {}) {
     let maximum = clamp(round1(finite(value?.fuzzy_max, DEFAULT_SPLITTER_STATE.fuzzy_max)), MIN_RANGE, MAX_RANGE);
     minimum = Math.min(minimum, target);
     maximum = Math.max(maximum, target);
+    if (round1(maximum - minimum) < MIN_EDGE_GAP) {
+        const expandedMaximum = round1(minimum + MIN_EDGE_GAP);
+        if (expandedMaximum <= MAX_RANGE) maximum = expandedMaximum;
+        else minimum = round1(maximum - MIN_EDGE_GAP);
+    }
     target = clamp(target, minimum, maximum);
     return {
         split_mode: splitMode,
@@ -67,9 +73,15 @@ export function moveTimelineHandle(state, handle, rawValue) {
             ? normalizeSplitterState({ ...current, target_duration: value })
             : current;
     }
-    if (handle === "min") current.fuzzy_min = clamp(value, MIN_RANGE, current.target_duration);
+    if (handle === "min") {
+        const maximum = Math.min(current.target_duration, round1(current.fuzzy_max - MIN_EDGE_GAP));
+        current.fuzzy_min = clamp(value, MIN_RANGE, maximum);
+    }
     if (handle === "target") current.target_duration = clamp(value, current.fuzzy_min, current.fuzzy_max);
-    if (handle === "max") current.fuzzy_max = clamp(value, current.target_duration, MAX_RANGE);
+    if (handle === "max") {
+        const minimum = Math.max(current.target_duration, round1(current.fuzzy_min + MIN_EDGE_GAP));
+        current.fuzzy_max = clamp(value, minimum, MAX_RANGE);
+    }
     return normalizeSplitterState(current);
 }
 
@@ -77,16 +89,9 @@ export function closestTimelineHandle(state, rawValue) {
     const current = normalizeSplitterState(state);
     if (current.split_mode === "exact") return "target";
     const value = clamp(Number(rawValue), MIN_RANGE, MAX_RANGE);
-    const distances = [
-        ["min", Math.abs(value - current.fuzzy_min)],
-        ["target", Math.abs(value - current.target_duration)],
-        ["max", Math.abs(value - current.fuzzy_max)],
-    ];
-    distances.sort((left, right) => left[1] - right[1]);
-    const preferred = distances[0][0];
-    if (preferred === "min" && value > current.target_duration) return "target";
-    if (preferred === "max" && value < current.target_duration) return "target";
-    return preferred;
+    if (value < current.fuzzy_min) return "min";
+    if (value > current.fuzzy_max) return "max";
+    return "target";
 }
 
 export function timelinePositions(state) {
@@ -120,7 +125,7 @@ export function buildSplitPayload(nodeId, filename, state, widgetValues = {}) {
         fuzzy_min: current.fuzzy_min,
         target_duration: current.target_duration,
         fuzzy_max: current.fuzzy_max,
-        algorithm: widgetValues.algorithm ?? "智能混合检测（推荐）",
+        algorithm: widgetValues.algorithm ?? "智能自适应检测（推荐）",
         sensitivity: widgetValues.sensitivity ?? 0.60,
         cut_threshold: widgetValues.cut_threshold ?? 0.55,
         peak_prominence: widgetValues.peak_prominence ?? 0.12,

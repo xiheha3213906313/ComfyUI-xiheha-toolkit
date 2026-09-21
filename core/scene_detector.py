@@ -6,6 +6,16 @@ from typing import Any, Callable
 import cv2
 import numpy as np
 
+from .scene_metrics import (
+    DETECTION_MODES,
+    FrameDescriptor,
+    apply_motion_suppression,
+    compare_descriptors,
+    compute_motion_explanation,
+    describe_frame,
+    should_check_optical_flow,
+)
+
 
 def resize_frame_for_analysis(frame: np.ndarray, max_dim: int = 256) -> np.ndarray:
     """Downscale frame keeping aspect ratio to minimize CPU/memory overhead."""
@@ -17,111 +27,20 @@ def resize_frame_for_analysis(frame: np.ndarray, max_dim: int = 256) -> np.ndarr
     return cv2.resize(frame, (nw, nh), interpolation=cv2.INTER_AREA)
 
 
-def compute_hsv_diff(frame1: np.ndarray, frame2: np.ndarray) -> float:
-    """Compute normalized 2D HSV histogram difference in [0.0, 1.0]."""
-    hsv1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2HSV)
-    hsv2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2HSV)
-    hist1 = cv2.calcHist([hsv1], [0, 1], None, [30, 32], [0, 180, 0, 256])
-    hist2 = cv2.calcHist([hsv2], [0, 1], None, [30, 32], [0, 180, 0, 256])
-    cv2.normalize(hist1, hist1, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
-    cv2.normalize(hist2, hist2, alpha=0, beta=1, norm_type=cv2.NORM_MINMAX)
-    corr = cv2.compareHist(hist1, hist2, cv2.HISTCMP_CORREL)
-    # Correlation is in [-1.0, 1.0], convert to difference in [0.0, 1.0]
-    diff = (1.0 - float(corr)) / 2.0
-    return float(np.clip(diff, 0.0, 1.0))
-
-
-def compute_ssim_diff(frame1: np.ndarray, frame2: np.ndarray) -> float:
-    """Compute structural similarity index difference in [0.0, 1.0]."""
-    g1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY).astype(np.float32)
-    g2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY).astype(np.float32)
-
-    c1 = 6.5025
-    c2 = 58.5225
-
-    mu1 = cv2.GaussianBlur(g1, (11, 11), 1.5)
-    mu2 = cv2.GaussianBlur(g2, (11, 11), 1.5)
-
-    mu1_sq = mu1 * mu1
-    mu2_sq = mu2 * mu2
-    mu1_mu2 = mu1 * mu2
-
-    sigma1_sq = cv2.GaussianBlur(g1 * g1, (11, 11), 1.5) - mu1_sq
-    sigma2_sq = cv2.GaussianBlur(g2 * g2, (11, 11), 1.5) - mu2_sq
-    sigma12 = cv2.GaussianBlur(g1 * g2, (11, 11), 1.5) - mu1_mu2
-
-    num = (2 * mu1_mu2 + c1) * (2 * sigma12 + c2)
-    den = (mu1_sq + mu2_sq + c1) * (sigma1_sq + sigma2_sq + c2)
-    ssim_map = num / (den + 1e-6)
-    ssim_val = float(np.mean(ssim_map))
-    # SSIM is in [-1.0, 1.0], difference is in [0.0, 1.0]
-    return float(np.clip(1.0 - max(0.0, ssim_val), 0.0, 1.0))
-
-
-def compute_edge_diff(frame1: np.ndarray, frame2: np.ndarray) -> float:
-    """Compute Sobel edge difference in [0.0, 1.0]."""
-    g1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
-    g2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
-    e1 = cv2.Sobel(g1, cv2.CV_32F, 1, 1, ksize=3)
-    e2 = cv2.Sobel(g2, cv2.CV_32F, 1, 1, ksize=3)
-    diff = float(np.mean(np.abs(e1 - e2)) / 255.0)
-    return float(np.clip(diff * 2.0, 0.0, 1.0))
-
-
-def compute_frame_diff(frame1: np.ndarray, frame2: np.ndarray) -> float:
-    """Compute normalized pixel absolute difference in [0.0, 1.0]."""
-    g1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
-    g2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
-    diff = float(np.mean(cv2.absdiff(g1, g2)) / 255.0)
-    return float(np.clip(diff * 2.5, 0.0, 1.0))
-
-
-def compute_phash_diff(frame1: np.ndarray, frame2: np.ndarray) -> float:
-    """Compute perceptual hash distance difference in [0.0, 1.0]."""
-    def _phash(img: np.ndarray) -> np.ndarray:
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        small = cv2.resize(gray, (32, 32), interpolation=cv2.INTER_AREA).astype(np.float32)
-        dct = cv2.dct(small)
-        dct_low = dct[:8, :8]
-        med = float(np.median(dct_low))
-        return dct_low > med
-
-    h1 = _phash(frame1)
-    h2 = _phash(frame2)
-    dist = float(np.count_nonzero(h1 != h2)) / 64.0
-    return float(np.clip(dist * 2.0, 0.0, 1.0))
-
-
-def compute_content_diff(frame1: np.ndarray, frame2: np.ndarray) -> float:
-    """Compute content change metric combining color and luminance shifts."""
-    hsv_d = compute_hsv_diff(frame1, frame2)
-    frame_d = compute_frame_diff(frame1, frame2)
-    return float(np.clip(0.6 * hsv_d + 0.4 * frame_d, 0.0, 1.0))
-
-
-def compute_cut_score(frame1: np.ndarray, frame2: np.ndarray, algorithm: str) -> float:
-    """Compute cut score between two consecutive frames in [0.0, 1.0]."""
-    algo = algorithm.strip().lower()
-    if "hsv" in algo:
-        return compute_hsv_diff(frame1, frame2)
-    if "ssim" in algo:
-        return compute_ssim_diff(frame1, frame2)
-    if "edge" in algo:
-        return compute_edge_diff(frame1, frame2)
-    if "frame" in algo or "帧差" in algo:
-        return compute_frame_diff(frame1, frame2)
-    if "hash" in algo or "哈希" in algo:
-        return compute_phash_diff(frame1, frame2)
-    if "content" in algo or "内容" in algo:
-        return compute_content_diff(frame1, frame2)
-
-    # Default: 智能混合检测 (smart_mix)
-    # cut_score = hsv_diff * 0.45 + ssim_diff * 0.35 + edge_diff * 0.20
-    hsv_s = compute_hsv_diff(frame1, frame2)
-    ssim_s = compute_ssim_diff(frame1, frame2)
-    edge_s = compute_edge_diff(frame1, frame2)
-    score = hsv_s * 0.45 + ssim_s * 0.35 + edge_s * 0.20
-    return float(np.clip(score, 0.0, 1.0))
+def compute_cut_score(
+    frame1: np.ndarray,
+    frame2: np.ndarray,
+    algorithm: str,
+    cut_threshold: float = 0.55,
+) -> float:
+    """Compute the new mode-aware hard-cut score for one adjacent frame pair."""
+    if algorithm not in DETECTION_MODES:
+        raise ValueError("旧检测算法已移除，请重新选择检测模式")
+    difference = compare_descriptors(describe_frame(frame1), describe_frame(frame2))
+    score = difference.score
+    if should_check_optical_flow(algorithm, difference, cut_threshold):
+        score = apply_motion_suppression(score, algorithm, compute_motion_explanation(frame1, frame2))
+    return score
 
 
 class FrameReader:
@@ -156,6 +75,169 @@ class FrameReader:
         self.close()
 
 
+def _candidate(
+    frame: int,
+    score: float,
+    target_frame: int,
+    *,
+    is_strong: bool,
+    prominence: float,
+    transition: str,
+) -> dict[str, Any]:
+    return {
+        "frame": frame,
+        "score": round(float(np.clip(score, 0.0, 1.0)), 4),
+        "prominence": round(float(max(0.0, prominence)), 4),
+        "is_strong": is_strong,
+        "dist_to_target": abs(frame - target_frame),
+        "transition": transition,
+    }
+
+
+def _detect_extreme_fades(
+    descriptor_frames: list[int],
+    descriptors: list[FrameDescriptor],
+    target_frame: int,
+    effective_threshold: float,
+    peak_prominence: float,
+    effective_fps: float,
+) -> list[dict[str, Any]]:
+    """Detect fade-to/from-black or white and place the cut at the extreme plateau."""
+    lumas = np.asarray([item.luma for item in descriptors], dtype=np.float32)
+    if len(lumas) < 4:
+        return []
+
+    look = max(3, int(round(min(1.25, len(lumas) / max(effective_fps, 1.0)) * effective_fps)))
+    candidates: list[dict[str, Any]] = []
+    for bright, mask in (
+        (False, lumas <= 0.10),
+        (True, lumas >= 0.92),
+    ):
+        start = 0
+        while start < len(mask):
+            if not mask[start]:
+                start += 1
+                continue
+            end = start
+            while end + 1 < len(mask) and mask[end + 1]:
+                end += 1
+
+            left = lumas[max(0, start - look):start]
+            right = lumas[end + 1:min(len(lumas), end + look + 1)]
+            extreme = float(np.max(lumas[start:end + 1]) if bright else np.min(lumas[start:end + 1]))
+            side_values = []
+            if len(left):
+                side_values.append(float(np.min(left) if bright else np.max(left)))
+            if len(right):
+                side_values.append(float(np.min(right) if bright else np.max(right)))
+            if side_values:
+                contrast = max((extreme - value) if bright else (value - extreme) for value in side_values)
+                required = max(0.16, peak_prominence)
+                if contrast >= required:
+                    center = (start + end) // 2
+                    score = max(effective_threshold, min(0.92, 0.52 + contrast * 0.65))
+                    candidates.append(
+                        _candidate(
+                            descriptor_frames[center],
+                            score,
+                            target_frame,
+                            is_strong=score >= 0.75,
+                            prominence=contrast,
+                            transition="fade",
+                        )
+                    )
+            start = end + 1
+    return candidates
+
+
+def _detect_dissolves(
+    descriptor_frames: list[int],
+    descriptors: list[FrameDescriptor],
+    pair_scores: list[float],
+    target_frame: int,
+    effective_threshold: float,
+    peak_prominence: float,
+    effective_fps: float,
+) -> list[dict[str, Any]]:
+    """Detect sustained gradual changes whose endpoints differ but have no hard peak."""
+    if len(descriptors) < 7:
+        return []
+
+    half_span = max(2, min(18, int(round(effective_fps * 0.30))))
+    provisional: list[tuple[int, dict[str, Any]]] = []
+    for center in range(half_span, len(descriptors) - half_span):
+        left = center - half_span
+        right = center + half_span
+        local_scores = np.asarray(pair_scores[left:right], dtype=np.float32)
+        if len(local_scores) < 4 or float(np.max(local_scores)) >= effective_threshold * 1.08:
+            continue
+
+        endpoint = compare_descriptors(descriptors[left], descriptors[right])
+        color_shift = max(endpoint.hsv, endpoint.luma_hist)
+        sustained = float(np.percentile(local_scores, 70))
+        before = np.asarray(pair_scores[max(0, left - half_span):left], dtype=np.float32)
+        after = np.asarray(pair_scores[right:min(len(pair_scores), right + half_span)], dtype=np.float32)
+        baseline_values = []
+        if len(before):
+            baseline_values.append(float(np.percentile(before, 70)))
+        if len(after):
+            baseline_values.append(float(np.percentile(after, 70)))
+        baseline = min(baseline_values, default=0.0)
+        gradual_prominence = sustained - baseline
+        active_frames = int(np.count_nonzero(local_scores >= max(0.035, sustained * 0.65)))
+        endpoint_gate = max(0.55, effective_threshold * 1.35)
+        if (
+            endpoint.score >= endpoint_gate
+            and color_shift >= 0.38
+            and gradual_prominence >= max(0.08, peak_prominence)
+            and sustained >= max(0.045, peak_prominence * 0.35)
+            and active_frames >= max(3, half_span // 2)
+        ):
+            score = max(effective_threshold, min(0.82, endpoint.score * 0.90 + sustained * 0.35))
+            provisional.append(
+                (
+                    center,
+                    _candidate(
+                        descriptor_frames[center],
+                        score,
+                        target_frame,
+                        is_strong=False,
+                        prominence=gradual_prominence,
+                        transition="dissolve",
+                    ),
+                )
+            )
+
+    candidates: list[dict[str, Any]] = []
+    run: list[tuple[int, dict[str, Any]]] = []
+    for item in provisional:
+        if run and item[0] - run[-1][0] > half_span:
+            candidates.append(max(run, key=lambda value: value[1]["score"])[1])
+            run = []
+        run.append(item)
+    if run:
+        candidates.append(max(run, key=lambda value: value[1]["score"])[1])
+    return candidates
+
+
+def _merge_nearby_candidates(
+    candidates: list[dict[str, Any]],
+    effective_fps: float,
+) -> list[dict[str, Any]]:
+    """Keep a single strongest candidate for each physical transition."""
+    radius = max(2, int(round(effective_fps * 0.55)))
+    priority = {"fade": 2, "hard": 1, "dissolve": 0}
+    kept: list[dict[str, Any]] = []
+    for item in sorted(
+        candidates,
+        key=lambda value: (priority.get(value.get("transition", ""), -1), value["score"]),
+        reverse=True,
+    ):
+        if all(abs(item["frame"] - existing["frame"]) > radius for existing in kept):
+            kept.append(item)
+    return sorted(kept, key=lambda item: item["frame"])
+
+
 def scan_window_cuts(
     reader: FrameReader,
     window_start_frame: int,
@@ -165,6 +247,7 @@ def scan_window_cuts(
     sensitivity: float,
     cut_threshold: float,
     peak_prominence: float,
+    effective_fps: float = 30.0,
     strong_cut_threshold: float = 0.75,
     progress_callback: Callable[[int, int], None] | None = None,
 ) -> list[dict[str, Any]]:
@@ -179,14 +262,23 @@ def scan_window_cuts(
 
     frame_indices: list[int] = []
     scores: list[float] = []
+    descriptor_frames = [max(0, window_start_frame - 1)]
+    descriptors = [describe_frame(prev_frame)]
 
     for f_idx in range(window_start_frame, window_end_frame + 1):
         curr_frame = reader.get_frame(f_idx)
         if curr_frame is None:
             break
-        score = compute_cut_score(prev_frame, curr_frame, algorithm)
+        current_descriptor = describe_frame(curr_frame)
+        difference = compare_descriptors(descriptors[-1], current_descriptor)
+        score = difference.score
+        if should_check_optical_flow(algorithm, difference, cut_threshold):
+            motion = compute_motion_explanation(prev_frame, curr_frame)
+            score = apply_motion_suppression(score, algorithm, motion)
         frame_indices.append(f_idx)
         scores.append(score)
+        descriptor_frames.append(f_idx)
+        descriptors.append(current_descriptor)
         prev_frame = curr_frame
         if progress_callback:
             progress_callback(f_idx, window_end_frame)
@@ -220,15 +312,39 @@ def scan_window_cuts(
         is_candidate = (score >= effective_thresh) and (prominence >= peak_prominence)
 
         if is_strong or is_candidate:
-            candidates.append({
-                "frame": f_idx,
-                "score": round(score, 4),
-                "prominence": round(prominence, 4),
-                "is_strong": is_strong,
-                "dist_to_target": abs(f_idx - target_frame),
-            })
+            candidates.append(
+                _candidate(
+                    f_idx,
+                    score,
+                    target_frame,
+                    is_strong=is_strong,
+                    prominence=prominence,
+                    transition="hard",
+                )
+            )
 
-    return candidates
+    candidates.extend(
+        _detect_extreme_fades(
+            descriptor_frames,
+            descriptors,
+            target_frame,
+            effective_thresh,
+            peak_prominence,
+            effective_fps,
+        )
+    )
+    candidates.extend(
+        _detect_dissolves(
+            descriptor_frames,
+            descriptors,
+            scores,
+            target_frame,
+            effective_thresh,
+            peak_prominence,
+            effective_fps,
+        )
+    )
+    return _merge_nearby_candidates(candidates, effective_fps)
 
 
 def select_best_cut(
@@ -333,6 +449,7 @@ def split_video_fuzzy(
                 sensitivity=sensitivity,
                 cut_threshold=cut_threshold,
                 peak_prominence=peak_prominence,
+                effective_fps=effective_fps,
                 strong_cut_threshold=strong_cut_threshold,
                 progress_callback=_step_cb,
             )

@@ -76,44 +76,40 @@ class SmartVideoSplitter:
                     "tooltip": "【模糊分段最长时长 (秒)】\n单个片段的最大时间上限，即使未检测到明显切镜也会在此处平滑收刀。"
                 }),
                 "algorithm": (ALGORITHMS, {
-                    "default": "智能混合检测（推荐）",
+                    "default": "智能自适应检测（推荐）",
                     "tooltip": (
-                        "【镜头转场检测算法】\n"
-                        "用于识别镜头切换、场景跳切与转场突变的核心比对模型：\n"
-                        "• 智能混合检测（推荐）: 结合 HSV 色相与 Content 纹理双轨检测，抗晃动噪点，切镜准确率最高\n"
-                        "• Content 内容变化: 基于亮度差与边缘纹理突变检测硬切，对光影闪变敏感\n"
-                        "• HSV 直方图: 分析色相与明度分布，适合捕获色彩风格剧变\n"
-                        "• SSIM 结构变化: 计算画面结构相似性衰减，擅长检测大幅构图重组\n"
-                        "• Frame Difference 帧差: 逐像素绝对差值统计，运算速度极快，适合平缓视频\n"
-                        "• Perceptual Hash 感知哈希: 基于频域指纹比对宏观视觉特征，对微小运动鲁棒"
+                        "【检测模式】\n"
+                        "选择适合素材运动强度与处理速度的镜头检测策略：\n"
+                        "• 智能自适应检测（推荐）: 适合剧情、混剪和一般短视频；识别硬切、淡入淡出与叠化，只在疑难候选附近使用光流校验\n"
+                        "• 快速内容检测: 适合固定机位、访谈及长视频批处理；不计算光流，速度最快，快速运镜时可能产生误判\n"
+                        "• 高运动抑制检测: 适合手持、运动、舞蹈及频繁推拉摇移；更积极使用运动补偿降低误切，分析耗时较高"
                     ),
                 }),
                 "sensitivity": ("FLOAT", {
                     "default": 0.60, "min": 0.0, "max": 1.0, "step": 0.01,
                     "tooltip": (
                         "【检测灵敏度】\n"
-                        "控制镜头突变判定的全局容差。默认值 0.60（范围 0.00 ~ 1.00）。\n"
-                        "• 调高 (如 0.70 ~ 0.90): 更敏锐，微小运镜晃动、快速摇移或短促跳切均会被切分，分段更碎\n"
-                        "• 调低 (如 0.30 ~ 0.50): 更保守，仅在发生彻底、明显的场景转变时才切分，避免过度切碎"
+                        "控制自适应背景阈值，默认值 0.60（范围 0.00 ~ 1.00）。\n"
+                        "• 调高: 更容易保留短促硬切和较弱渐变，也可能增加误切\n"
+                        "• 调低: 更保守，适合画面抖动或光线变化频繁的素材"
                     ),
                 }),
                 "cut_threshold": ("FLOAT", {
                     "default": 0.55, "min": 0.0, "max": 1.0, "step": 0.01,
                     "tooltip": (
                         "【切镜阈值】\n"
-                        "判定两帧之间发生镜头突变的最低绝对分数门槛。默认值 0.55（范围 0.00 ~ 1.00）。\n"
-                        "• 调高 (如 0.70+): 要求极其强烈的视觉反差（如黑屏过渡、不同场景硬切），减少切片数量\n"
-                        "• 调低 (如 0.35 ~ 0.45): 对同机位微小转场、淡入淡出更易识别，保留更多细微切点"
+                        "控制颜色、感知哈希、亮度和边缘组合证据的最低强度。默认值 0.55。\n"
+                        "• 调高: 只接受更明确的场景变化，减少切片\n"
+                        "• 调低: 保留较弱转场，但快速运动和特效更容易成为候选"
                     ),
                 }),
                 "peak_prominence": ("FLOAT", {
                     "default": 0.12, "min": 0.0, "max": 1.0, "step": 0.01,
                     "tooltip": (
-                        "【显著度阈值】\n"
-                        "局部切镜突变峰值与相邻两帧背景基准线的最小落差要求。默认值 0.12（范围 0.00 ~ 1.00）。\n"
-                        "• 核心作用: 有效过滤手持跟拍晃动、镜头快速推拉摇移 (Pan/Zoom) 引起的连续高分误判\n"
-                        "• 调高数值: 消除连续运镜造成的假转场，只在出现孤立显著突变时落刀\n"
-                        "• 调低数值: 保留密集快切、快节奏蒙太奇等紧凑切镜点"
+                        "【突变显著度】\n"
+                        "要求硬切峰值高于前后背景变化，并控制渐变累计变化的有效强度。默认值 0.12。\n"
+                        "• 调高: 更强地过滤抖动、闪光及连续运镜\n"
+                        "• 调低: 更容易保留密集快切、较柔和的淡变与叠化"
                     ),
                 }),
             },
@@ -129,9 +125,13 @@ class SmartVideoSplitter:
     CATEGORY = "xiheha-工具箱/视频"
 
     @classmethod
-    def VALIDATE_INPUTS(cls, video: str, **kwargs: Any) -> bool | str:
+    def VALIDATE_INPUTS(cls, video: str, algorithm: str | None = None, **kwargs: Any) -> bool | str:
         if not video or video == "none":
             return "请先选择或上传视频文件。"
+        try:
+            VideoSplitOptions.from_mapping({"algorithm": algorithm or ALGORITHMS[0]})
+        except ValueError as exc:
+            return str(exc)
         try:
             resolve_input_video(video)
         except (ValueError, FileNotFoundError) as exc:
@@ -149,7 +149,7 @@ class SmartVideoSplitter:
         fuzzy_min: float = 4.0,
         target_duration: float = 5.0,
         fuzzy_max: float = 6.0,
-        algorithm: str = "智能混合检测（推荐）",
+        algorithm: str = "智能自适应检测（推荐）",
         sensitivity: float = 0.60,
         cut_threshold: float = 0.55,
         peak_prominence: float = 0.12,

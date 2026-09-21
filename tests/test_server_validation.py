@@ -239,6 +239,8 @@ class ServerValidationTests(unittest.TestCase):
             VIDEO_PIPELINE.VideoSplitOptions.from_mapping({"sensitivity": 2})
         with self.assertRaisesRegex(ValueError, "不受支持"):
             VIDEO_PIPELINE.VideoSplitOptions.from_mapping({"algorithm": "unknown"})
+        with self.assertRaisesRegex(ValueError, "旧检测算法已移除"):
+            VIDEO_PIPELINE.VideoSplitOptions.from_mapping({"algorithm": "智能混合检测（推荐）"})
         with self.assertRaisesRegex(ValueError, "fuzzy 或 exact"):
             VIDEO_PIPELINE.VideoSplitOptions.from_mapping({"split_mode": ["exact"]})
         with self.assertRaisesRegex(ValueError, "必须是对象"):

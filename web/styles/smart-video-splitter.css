@@ -6,19 +6,35 @@
 .xh-action-btn.primary { background: #2b6cb0; border-color: #63b3ed; }
 .xh-action-btn.primary:hover { background: #3182ce; border-color: #90cdf4; }
 .xh-action-btn:disabled { opacity: .5; cursor: not-allowed; }
-.xh-timeline-header { display: flex; justify-content: space-between; align-items: center; margin: 8px 0 6px; }
-.xh-timeline-title { font-weight: 600; font-size: 12px; color: #e2e8f0; }
-.xh-seg-switch { display: inline-flex; border: 1px solid rgba(255,255,255,.25); border-radius: 12px; padding: 1px; background: rgba(0,0,0,.3); }
-.xh-seg-item { padding: 2px 8px; font-size: 11px; cursor: pointer; border-radius: 10px; color: #a0aec0; user-select: none; transition: all .15s; }
-.xh-seg-item.active { background: #3182ce; color: #fff; font-weight: 600; }
-.xh-timeline-wrap { position: relative; width: 100%; height: 32px; user-select: none; margin: 4px 0 2px; }
-.xh-timeline-track { position: absolute; top: 14px; left: 8px; right: 8px; height: 4px; background: rgba(255,255,255,.2); border-radius: 2px; }
-.xh-timeline-range { position: absolute; top: 0; height: 100%; background: #4299e1; border-radius: 2px; }
-.xh-handle { position: absolute; top: 50%; width: 14px; height: 14px; margin-left: -7px; margin-top: -7px; border-radius: 50%; background: #edf2f7; border: 2px solid #3182ce; cursor: grab; box-shadow: 0 1px 4px rgba(0,0,0,.4); z-index: 2; transition: transform .1s; }
-.xh-handle:hover, .xh-handle.dragging { transform: scale(1.2); border-color: #63b3ed; }
-.xh-handle-target { position: absolute; top: 50%; width: 16px; height: 16px; margin-left: -8px; margin-top: -8px; background: #ecc94b; border: 2px solid #d69e2e; transform: rotate(45deg); cursor: grab; box-shadow: 0 2px 6px rgba(0,0,0,.5); z-index: 3; transition: transform .1s; }
-.xh-handle-target:hover, .xh-handle-target.dragging { transform: rotate(45deg) scale(1.25); border-color: #f6e05e; }
-.xh-timeline-labels { display: flex; justify-content: space-between; font-size: 11px; color: #cbd5e0; margin-bottom: 6px; padding: 0 4px; font-variant-numeric: tabular-nums; }
+.xh-timeline-panel { box-sizing: border-box; width: 100%; margin: 7px 0 5px; color: var(--fg-color, #ddd); }
+.xh-timeline-header { display: flex; justify-content: space-between; align-items: center; min-height: 21px; gap: 8px; }
+.xh-timeline-heading { display: inline-flex; align-items: center; gap: 4px; min-width: 0; }
+.xh-timeline-title { color: var(--fg-color, #ddd); font-size: 11px; font-weight: 650; }
+.xh-timeline-unit { color: color-mix(in srgb, var(--fg-color, #ddd) 52%, transparent); font-size: 9px; }
+.xh-seg-switch { display: inline-flex; flex: 0 0 auto; gap: 0; border: 1px solid rgba(255,255,255,.25); border-radius: 4px; padding: 0; overflow: hidden; background: rgba(0,0,0,.3); }
+.xh-seg-item { box-sizing: border-box; border: 0; border-radius: 2px; padding: 1px 8px; color: #a0aec0; background: transparent; font: 500 11px/17px sans-serif; cursor: pointer; user-select: none; transition: color .15s ease, background .15s ease; }
+.xh-seg-item:hover:not(.active) { color: var(--fg-color, #ddd); background: rgba(255,255,255,.07); }
+.xh-seg-item.active { color: #fff; background: #3182ce; font-weight: 600; }
+.xh-seg-item:focus-visible { outline: 2px solid var(--p-primary-color, #60a5fa); outline-offset: 1px; }
+.xh-timeline-wrap { position: relative; width: 100%; height: 25px; margin: 3px 0; user-select: none; }
+.xh-timeline-track { position: absolute; top: 2px; left: 9px; right: 9px; height: 21px; overflow: visible; border-radius: 7px; cursor: grab; touch-action: none; }
+.xh-timeline-track:active { cursor: grabbing; }
+.xh-timeline-rail { position: absolute; inset: 0; overflow: hidden; border-radius: inherit; background: var(--comfy-input-bg, #222); }
+.xh-timeline-range { position: absolute; inset-block: 0; z-index: 0; border-radius: 0; background: color-mix(in srgb, var(--p-primary-color, #60a5fa) 44%, var(--comfy-input-bg, #222) 56%); pointer-events: auto; }
+.xh-timeline-ticks { position: absolute; inset: 0 6px; z-index: 1; pointer-events: none; }
+.xh-timeline-tick { position: absolute; top: 50%; width: 3px; height: 3px; border-radius: 50%; background: color-mix(in srgb, var(--fg-color, #ddd) 22%, transparent); transform: translate(-50%, -50%); }
+.xh-handle, .xh-handle-target { box-sizing: border-box; position: absolute; z-index: 2; top: 0; height: 100%; border: 0; background: transparent; cursor: grab; touch-action: none; }
+.xh-handle { width: 12px; margin-left: -6px; }
+.xh-handle-target { z-index: 3; width: 12px; margin-left: -6px; }
+.xh-handle::after, .xh-handle-target::after { content: ""; position: absolute; top: 0; bottom: 0; left: 50%; width: 5px; border-radius: 2px; background: color-mix(in srgb, var(--fg-color, #ddd) 72%, var(--component-node-widget-background, #313235)); transform: translateX(-50%); transition: width .12s ease, background .12s ease, box-shadow .12s ease; }
+.xh-handle-target::after { background: var(--p-primary-color, #60a5fa); box-shadow: 0 0 0 2px color-mix(in srgb, var(--p-primary-color, #60a5fa) 18%, transparent); }
+.xh-handle:hover, .xh-handle.dragging, .xh-handle-target:hover, .xh-handle-target.dragging { cursor: grabbing; }
+.xh-handle:hover::after, .xh-handle.dragging::after, .xh-handle-target:hover::after, .xh-handle-target.dragging::after { width: 7px; }
+.xh-handle:hover::after, .xh-handle.dragging::after { background: var(--fg-color, #ddd); }
+.xh-handle:focus-visible, .xh-handle-target:focus-visible { outline: 2px solid var(--p-primary-color, #60a5fa); outline-offset: 2px; }
+.xh-timeline-labels { display: flex; align-items: center; justify-content: space-between; min-height: 17px; padding: 0 4px; color: color-mix(in srgb, var(--fg-color, #ddd) 72%, transparent); font-size: 10px; font-variant-numeric: tabular-nums; }
+.xh-timeline-labels b { color: var(--fg-color, #ddd); font-size: 11px; font-weight: 650; }
+.xh-timeline-boundary { color: color-mix(in srgb, var(--fg-color, #ddd) 42%, transparent); font-size: 9px; }
 .xh-status-panel { background: rgba(0,0,0,.35); border: 1px solid rgba(255,255,255,.15); border-radius: 6px; padding: 6px 8px; font-size: 11px; line-height: 1.5; color: #e2e8f0; margin-top: 6px; word-break: break-word; }
 .xh-status-dirty { color: #f6ad55; margin-top: 2px; font-weight: 500; }
 .xh-preview-container { width: 100%; margin: 6px 0; border-radius: 6px; overflow: hidden; background: #000; display: flex; align-items: center; justify-content: center; }

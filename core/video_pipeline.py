@@ -12,18 +12,12 @@ from typing import Any, Callable, Mapping
 import folder_paths
 
 from .scene_detector import split_video_exact, split_video_fuzzy
+from .scene_metrics import DETECTION_MODES, REMOVED_DETECTION_MODES
 from .video_cutter import cut_and_cache_segments, get_node_cache_dir
 from .video_meta import DIMMAX, LOAD_FORMATS, get_video_metadata, target_size
 
 
-VIDEO_ALGORITHMS = (
-    "智能混合检测（推荐）",
-    "Content 内容变化",
-    "HSV 直方图",
-    "SSIM 结构变化",
-    "Frame Difference 帧差",
-    "Perceptual Hash 感知哈希",
-)
+VIDEO_ALGORITHMS = DETECTION_MODES
 
 
 def _number(
@@ -78,6 +72,8 @@ class VideoSplitOptions:
 
         algorithm = values.get("algorithm", VIDEO_ALGORITHMS[0])
         if not isinstance(algorithm, str) or algorithm not in VIDEO_ALGORITHMS:
+            if isinstance(algorithm, str) and algorithm in REMOVED_DETECTION_MODES:
+                raise ValueError("旧检测算法已移除，请重新选择检测模式")
             raise ValueError("algorithm 不受支持")
 
         fuzzy_min = float(_number(values.get("fuzzy_min", 4.0), "fuzzy_min", minimum=3.0, maximum=15.0))

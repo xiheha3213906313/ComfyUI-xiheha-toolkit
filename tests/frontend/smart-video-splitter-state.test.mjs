@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import {
     buildSplitPayload,
     closestTimelineHandle,
+    MIN_EDGE_GAP,
     moveTimelineHandle,
     parseSplitterState,
+    round1,
     videoViewPath,
 } from "../../web/features/smart-video-splitter/state.js";
 
@@ -15,6 +17,7 @@ test("splitter state restores video and normalizes timeline constraints", () => 
     assert.equal(state.video, "sub/video.mp4");
     assert.ok(state.fuzzy_min <= state.target_duration);
     assert.ok(state.target_duration <= state.fuzzy_max);
+    assert.ok(state.fuzzy_max - state.fuzzy_min >= MIN_EDGE_GAP);
     assert.equal(parseSplitterState("bad", "fallback.mp4").video, "fallback.mp4");
 });
 
@@ -23,8 +26,28 @@ test("timeline movement enforces fuzzy and exact bounds", () => {
     state = moveTimelineHandle(state, "min", 9);
     assert.equal(state.fuzzy_min, 5);
     state = moveTimelineHandle(state, "max", 3);
-    assert.equal(state.fuzzy_max, 5);
+    assert.equal(state.fuzzy_max, 5.2);
+    assert.equal(round1(state.fuzzy_max - state.fuzzy_min), MIN_EDGE_GAP);
     assert.equal(closestTimelineHandle({ ...state, split_mode: "exact" }, 10), "target");
+});
+
+test("white edge handles keep at least 0.2 seconds apart", () => {
+    let state = parseSplitterState('{"split_mode":"fuzzy","fuzzy_min":8,"target_duration":8,"fuzzy_max":8}');
+    assert.equal(state.fuzzy_min, 8);
+    assert.equal(state.fuzzy_max, 8.2);
+    state = moveTimelineHandle(state, "min", 15);
+    assert.equal(state.fuzzy_min, 8);
+    state = moveTimelineHandle(state, "max", 3);
+    assert.equal(state.fuzzy_max, 8.2);
+});
+
+test("timeline regions route dark areas to edge handles and blue range to target", () => {
+    const state = parseSplitterState('{"split_mode":"fuzzy","fuzzy_min":5,"target_duration":8,"fuzzy_max":11}');
+    assert.equal(closestTimelineHandle(state, 4.9), "min");
+    assert.equal(closestTimelineHandle(state, 5), "target");
+    assert.equal(closestTimelineHandle(state, 9.5), "target");
+    assert.equal(closestTimelineHandle(state, 11), "target");
+    assert.equal(closestTimelineHandle(state, 11.1), "max");
 });
 
 test("request and preview URL construction use normalized state", () => {
@@ -37,4 +60,5 @@ test("request and preview URL construction use normalized state", () => {
     assert.equal(payload.target_duration, 7);
     assert.equal(payload.force_rate, 24);
     assert.equal(payload.format, "Wan");
+    assert.equal(payload.algorithm, "智能自适应检测（推荐）");
 });

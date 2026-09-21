@@ -5,6 +5,8 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest.mock import patch
+import cv2
 import numpy as np
 import torch
 
@@ -15,13 +17,18 @@ from core.video_meta import (
 )
 from core.scene_detector import (
     compute_cut_score,
-    compute_edge_diff,
-    compute_frame_diff,
-    compute_hsv_diff,
-    compute_phash_diff,
-    compute_ssim_diff,
+    scan_window_cuts,
     select_best_cut,
     split_video_exact,
+)
+from core.scene_metrics import (
+    DETECTION_MODES,
+    FAST_DETECTION,
+    HIGH_MOTION_DETECTION,
+    SMART_DETECTION,
+    compare_descriptors,
+    describe_frame,
+    should_check_optical_flow,
 )
 from core.video_cutter import (
     clean_node_cache,
@@ -38,6 +45,14 @@ class TestSmartVideoSplitterContract(unittest.TestCase):
         inputs = SmartVideoSplitter.INPUT_TYPES()
         self.assertIn("required", inputs)
         req = inputs["required"]
+        self.assertEqual(
+            list(req),
+            [
+                "video", "force_rate", "custom_width", "custom_height", "format", "split_mode",
+                "fuzzy_min", "target_duration", "fuzzy_max", "algorithm", "sensitivity",
+                "cut_threshold", "peak_prominence",
+            ],
+        )
 
         # Verify required widgets
         self.assertIn("video", req)
@@ -67,6 +82,8 @@ class TestSmartVideoSplitterContract(unittest.TestCase):
         self.assertEqual(req["fuzzy_min"][1]["default"], 4.0)
         self.assertEqual(req["target_duration"][1]["default"], 5.0)
         self.assertEqual(req["fuzzy_max"][1]["default"], 6.0)
+        self.assertEqual(req["algorithm"][0], list(DETECTION_MODES))
+        self.assertEqual(req["algorithm"][1]["default"], SMART_DETECTION)
 
         # Hidden fields
         self.assertIn("hidden", inputs)
@@ -116,6 +133,10 @@ class TestSmartVideoSplitterContract(unittest.TestCase):
         self.assertEqual(SmartVideoSplitter.VALIDATE_INPUTS(""), "请先选择或上传视频文件。")
         self.assertEqual(SmartVideoSplitter.VALIDATE_INPUTS("none"), "请先选择或上传视频文件。")
         self.assertEqual(SmartVideoSplitter.VALIDATE_INPUTS(None), "请先选择或上传视频文件。")
+        self.assertEqual(
+            SmartVideoSplitter.VALIDATE_INPUTS("video.mp4", algorithm="智能混合检测（推荐）"),
+            "旧检测算法已移除，请重新选择检测模式",
+        )
 
         # Non-existent file
         res = SmartVideoSplitter.VALIDATE_INPUTS("non_existent_12345.mp4")
@@ -174,7 +195,7 @@ class TestDimensionCalculation(unittest.TestCase):
 
 
 class TestSceneDetectionMetrics(unittest.TestCase):
-    """Verify algorithms on synthetic test frames."""
+    """Verify the three detection profiles on synthetic frames."""
 
     def setUp(self):
         # Identical white frame
@@ -188,25 +209,96 @@ class TestSceneDetectionMetrics(unittest.TestCase):
         self.noise2 = np.random.randint(0, 256, (128, 128, 3), dtype=np.uint8)
 
     def test_identical_frames_score_zero(self):
-        self.assertAlmostEqual(compute_hsv_diff(self.white_frame1, self.white_frame2), 0.0, places=2)
-        self.assertAlmostEqual(compute_ssim_diff(self.white_frame1, self.white_frame2), 0.0, places=2)
-        self.assertAlmostEqual(compute_edge_diff(self.white_frame1, self.white_frame2), 0.0, places=2)
-        self.assertAlmostEqual(compute_frame_diff(self.white_frame1, self.white_frame2), 0.0, places=2)
-        self.assertAlmostEqual(compute_phash_diff(self.white_frame1, self.white_frame2), 0.0, places=2)
-        self.assertAlmostEqual(compute_cut_score(self.white_frame1, self.white_frame2, "智能混合检测（推荐）"), 0.0, places=2)
+        for mode in DETECTION_MODES:
+            self.assertAlmostEqual(compute_cut_score(self.white_frame1, self.white_frame2, mode), 0.0, places=2)
 
-    def test_contrasting_frames_score_high(self):
-        # White to black is a massive visual transition
-        ssim_d = compute_ssim_diff(self.white_frame1, self.black_frame)
-        frame_d = compute_frame_diff(self.white_frame1, self.black_frame)
-        self.assertGreater(ssim_d, 0.7)
-        self.assertGreater(frame_d, 0.7)
+    def test_same_distribution_hard_cut_beats_translation(self):
+        translated = np.roll(self.noise1, 6, axis=1)
+        translated_score = compute_cut_score(self.noise1, translated, FAST_DETECTION)
+        hard_cut_score = compute_cut_score(self.noise1, self.noise2, FAST_DETECTION)
+        self.assertGreater(hard_cut_score, translated_score + 0.25)
 
-    def test_different_algorithms(self):
-        algos = ["智能混合检测（推荐）", "Content 内容变化", "HSV 直方图", "SSIM 结构变化", "Frame Difference 帧差", "Perceptual Hash 感知哈希"]
-        for algo in algos:
-            score = compute_cut_score(self.noise1, self.noise2, algo)
-            self.assertTrue(0.0 <= score <= 1.0, f"Algorithm {algo} produced out of bound score {score}")
+    def test_brightness_flash_is_not_a_hard_cut(self):
+        flash = np.clip(self.noise1.astype(np.int16) + 45, 0, 255).astype(np.uint8)
+        score = compute_cut_score(self.noise1, flash, FAST_DETECTION)
+        self.assertLess(score, 0.40)
+
+    def test_old_algorithm_value_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, "旧检测算法已移除"):
+            compute_cut_score(self.noise1, self.noise2, "智能混合检测（推荐）")
+
+    def test_optical_flow_policy(self):
+        difference = compare_descriptors(describe_frame(self.noise1), describe_frame(self.noise2))
+        self.assertFalse(should_check_optical_flow(FAST_DETECTION, difference, 0.55))
+        self.assertTrue(should_check_optical_flow(SMART_DETECTION, difference, 0.55))
+        self.assertTrue(should_check_optical_flow(HIGH_MOTION_DETECTION, difference, 0.55))
+
+        with patch("core.scene_detector.compute_motion_explanation") as flow:
+            compute_cut_score(self.noise1, self.noise2, FAST_DETECTION)
+            flow.assert_not_called()
+        with patch("core.scene_detector.compute_motion_explanation", wraps=None) as flow:
+            from core.scene_metrics import MotionExplanation
+            flow.return_value = MotionExplanation(0.0, 0.0, 1.0, 1.0)
+            compute_cut_score(self.noise1, self.noise2, SMART_DETECTION)
+            flow.assert_called_once()
+
+
+class _SyntheticFrameReader:
+    def __init__(self, frames):
+        self.frames = frames
+
+    def get_frame(self, frame_idx):
+        return self.frames[frame_idx] if 0 <= frame_idx < len(self.frames) else None
+
+
+class TestTemporalTransitionDetection(unittest.TestCase):
+    def setUp(self):
+        rng = np.random.default_rng(7)
+        self.first = rng.integers(0, 256, (72, 96, 3), dtype=np.uint8)
+        self.second = rng.integers(0, 256, (72, 96, 3), dtype=np.uint8)
+
+    def _scan(self, frames):
+        return scan_window_cuts(
+            _SyntheticFrameReader(frames),
+            1,
+            len(frames) - 1,
+            len(frames) // 2,
+            FAST_DETECTION,
+            0.60,
+            0.55,
+            0.12,
+            effective_fps=10.0,
+        )
+
+    def test_hard_cut_is_detected_once(self):
+        frames = [self.first.copy() for _ in range(10)] + [self.second.copy() for _ in range(10)]
+        candidates = self._scan(frames)
+        nearby = [item for item in candidates if abs(item["frame"] - 10) <= 1]
+        self.assertEqual(len(nearby), 1)
+        self.assertEqual(nearby[0]["transition"], "hard")
+
+    def test_fade_to_black_is_detected_at_darkest_frames(self):
+        frames = [self.first.copy() for _ in range(4)]
+        frames.extend((self.first.astype(np.float32) * scale).astype(np.uint8) for scale in np.linspace(0.8, 0.0, 7))
+        frames.extend([np.zeros_like(self.first) for _ in range(3)])
+        frames.extend((self.second.astype(np.float32) * scale).astype(np.uint8) for scale in np.linspace(0.2, 1.0, 6))
+        candidates = self._scan(frames)
+        self.assertTrue(any(item["transition"] == "fade" for item in candidates))
+
+    def test_cross_dissolve_produces_one_gradual_candidate(self):
+        first = np.full_like(self.first, (20, 30, 220))
+        second = np.full_like(self.second, (210, 170, 25))
+        cv2.circle(first, (24, 36), 16, (245, 245, 245), -1)
+        cv2.rectangle(second, (55, 18), (87, 55), (10, 10, 10), -1)
+        frames = [first.copy() for _ in range(4)]
+        frames.extend(
+            cv2.addWeighted(first, 1.0 - alpha, second, alpha, 0.0)
+            for alpha in np.linspace(0.08, 0.92, 12)
+        )
+        frames.extend([second.copy() for _ in range(4)])
+        candidates = self._scan(frames)
+        gradual = [item for item in candidates if item["transition"] == "dissolve"]
+        self.assertEqual(len(gradual), 1)
 
 
 class TestCandidateSelection(unittest.TestCase):

@@ -57,10 +57,10 @@ export const PORT_LABELS = {
             custom_width: "自定义宽度",
             custom_height: "自定义高度",
             format: "模型格式",
-            algorithm: "检测算法",
+            algorithm: "检测模式",
             sensitivity: "检测灵敏度",
             cut_threshold: "切镜阈值",
-            peak_prominence: "显著度阈值",
+            peak_prominence: "突变显著度",
         },
     },
 };

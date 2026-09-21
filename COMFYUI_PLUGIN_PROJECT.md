@@ -8,7 +8,7 @@ remind_after: null
 analysis_scope: full-static
 validation_level: simple
 validation_model: "Gemini 3.8 Flash (High)"
-validation_configured_at: 2026-09-21T14:41:22.178645+08:00
+validation_configured_at: 2026-09-21T21:22:29.772353+08:00
 validation_agent: "Antigravity"
 ---
 
@@ -22,7 +22,7 @@ validation_agent: "Antigravity"
 - 当前功能模块包括基础模型/LoRA 同目录 TXT 或 JSON sidecar 提示词配置（来源采集、配置选择、词条开关、提示词合并与展示）以及视频智能分割。
 - 采用经典 `NODE_CLASS_MAPPINGS` / `NODE_DISPLAY_NAME_MAPPINGS` 注册方式，前端由 `WEB_DIRECTORY = "./web"` 提供原生 ES Module 扩展。
 - 这是可继续增加同级工具的通用库，不应把仓库边界限定为 sidecar 提示词工具。
-- 当前版本源为根 `__init__.py` 的 `__version__ = "0.8.3"`。
+- 当前版本源为根 `__init__.py` 的 `__version__ = "0.9.0"`。
 
 ## Authoritative files
 
@@ -141,10 +141,10 @@ validation_agent: "Antigravity"
 | --- | --- |
 | 实现/显示名 | `nodes/smart_video_splitter.py::SmartVideoSplitter` / `智能视频分割器` |
 | 分类/函数 | `xiheha-工具箱/视频` / `process` |
-| 必选输入（全部为 Widget，无连线端口） | `video`: 视频选择；`force_rate`: FLOAT，默认 0；`custom_width`: INT，默认 0；`custom_height`: INT，默认 540；`format`: 格式选择；`split_mode`: 模糊/精确；`fuzzy_min`: 最短时长；`target_duration`: 目标时长；`fuzzy_max`: 最长时长；`algorithm`: 算法；`sensitivity`: 灵敏度；`cut_threshold`: 切镜阈值；`peak_prominence`: 峰值显著度 |
+| 必选输入（全部为 Widget，无连线端口） | `video`: 视频选择；`force_rate`: FLOAT，默认 0；`custom_width`: INT，默认 0；`custom_height`: INT，默认 540；`format`: 格式选择；`split_mode`: 模糊/精确；`fuzzy_min`: 最短时长；`target_duration`: 目标时长；`fuzzy_max`: 最长时长；`algorithm`: 检测模式，三档为智能自适应/快速内容/高运动抑制；`sensitivity`: 灵敏度；`cut_threshold`: 切镜阈值；`peak_prominence`: 突变显著度 |
 | 隐藏输入 | `unique_id`: `UNIQUE_ID`；`splitter_state`: `STRING` |
 | 输出（顺序固定） | `SMART_VIDEO_STREAM`/`视频流`；`AUDIO`/`音频`；`INT`/`帧数` |
-| 行为 | `core/video_pipeline.py` 统一路径解析、参数规范化、尺寸、分段、切片和 manifest；模糊模式按场景候选切点分段，精确模式按帧固定间隔切分；节点执行允许复用匹配 manifest，前端主动计算强制重算 |
+| 行为 | `core/video_pipeline.py` 统一路径解析、参数规范化、尺寸、分段、切片和 manifest；模糊模式组合颜色/亮度/边缘/感知哈希并检测硬切和渐变，智能与高运动模式按不同门槛使用光流抑制可解释运镜；精确模式按帧固定间隔切分；节点执行允许复用匹配 manifest，前端主动计算强制重算 |
 | 持久状态 | `splitter_state` 记录当前选定/上传的视频路径（`video`）、分段模式、最短、目标与最长时长，工作流载入/未手动保存刷新时无损还原 |
 | 前端 | `web/nodes/smart-video-splitter.js` 安装 `web/features/smart-video-splitter/` controller；提供上传/计算、3.0~15.0s 时间轴、参数显隐及统一生命周期清理 |
 
@@ -225,7 +225,7 @@ TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支�
     "min_duration": 4.0,
     "target_duration": 5.0,
     "max_duration": 6.0,
-    "algorithm": "智能混合检测（推荐）",
+    "algorithm": "智能自适应检测（推荐）",
     "sensitivity": 0.60,
     "cut_threshold": 0.55,
     "peak_prominence": 0.12,
@@ -330,6 +330,7 @@ TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支�
 
 - 公共 ID、类型名、端口内部名、端口顺序和输出类型是工作流契约；除非用户明确接受破坏性变化，否则保持稳定。
 - 当前已完成一次性 `LPT_` → `XH_`、`LORA_PROMPT_SOURCE` → `XH_SOURCE`、旧来源字段 → `sources/source_name` 迁移；当前代码不保留旧名兼容分支。
+- 视频检测模式在 0.9.0 破坏性替换旧六算法枚举；旧值会明确报错，历史工作流需要重新选择三种新模式之一，输入内部名和顺序保持不变。
 - 不为外部 easy-use 标识创建本地别名，不修改其端口/widget 名。
 - 前端预览和 Python 队列执行必须同时实现同一行为；不能只修一侧。
 - `selection_state`、`token_state` 和 `editor_state` 属于保存工作流的状态，DOM controller 缓存不属于持久格式。
