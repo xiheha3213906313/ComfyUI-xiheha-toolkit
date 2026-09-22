@@ -24,7 +24,18 @@ This exemption is scope-based, not repository-wide. If one request changes both 
      --model <host-model-label-or-id> --agent <coding-agent-name>
    ```
 
-   Omit either optional argument when that value is not trustworthy. The returned `question_tool` is a candidate-resolution hint, not proof that a tool is callable in the current mode.
+   In a Codex host, every project-actionable user message must call the checker
+   with `--agent Codex` and `--model` set to the current model identity exposed
+   to that turn before planning or acting. This includes later messages in the
+   same conversation. Do not reuse the profile's saved model as the current
+   value and do not omit `--model` merely because an earlier message matched.
+   If Codex exposes only a model family rather than a selector ID, pass that
+   exact trustworthy identity and do not invent a more specific variant. If it
+   exposes no trustworthy model identity at all, pass the literal `unknown`
+   and follow the resulting confirmation flow. Outside Codex, omit either
+   optional argument only when that value is not trustworthy. The returned
+   `question_tool` is a candidate-resolution hint, not proof that a tool is
+   callable in the current mode.
 
 2. The canonical profile is `<plugin-root>/COMFYUI_PLUGIN_PROJECT.md`.
 3. If the result is `ready` or `partial`, read the whole profile before reading implementation files. Treat it as an index, not unquestionable truth: verify every fact in the area being changed against current source.
@@ -43,11 +54,32 @@ For gated work, follow the returned `validation.action` instead of reconstructin
   level, use the same native three-level structured choice, and stop until an
   explicit answer returns. Persist it with the current model when its identity
   is trustworthy; never bind a guessed identifier.
-- `continue`: on the first project-related turn of a genuinely new conversation, briefly remind the user of the active level and continue without pausing. Later tasks in that conversation continue silently.
+- `continue`: configured and current models match. On the first project-related
+  turn of a genuinely new conversation, briefly state the verified current
+  model and active validation level, then continue without pausing or asking.
+  On later project-actionable messages in that conversation, continue silently
+  without reporting the repeated check.
 
 A missing or invalid profile has no usable validation action; the bootstrap procedure collects the choice instead. Treat an unknown action as blocking and read [references/validation-strategies.md](references/validation-strategies.md) before proceeding.
 
-A new conversation means no earlier visible turn has discussed or modified this project. A new project task is a distinct requested outcome, not every follow-up message within the same ongoing change. Run the gate once at task start; do not re-run it silently for each message. If the model was unverifiable and the user confirms a level, do not repeat the question within that task. Read [references/validation-strategies.md](references/validation-strategies.md) for the action contract, selection, persistence, overrides, and risk floors.
+A new conversation means no earlier visible turn has discussed or modified this
+project. In Codex, a **project-actionable message** is any user message that asks
+for a project-specific plan, repository inspection or diagnosis, implementation
+or continuation, node/code/config/documentation changes, commands, tests, or
+validation. Run the gate once at the start of every such message before any
+project plan, tool call, command, or edit. Multiple tool calls within that one
+assistant turn do not require repeated checks.
+
+Ordinary conversation that requests no project-specific planning, inspection,
+or action does not trigger the gate. A status-only question also does not trigger
+it unless the user asks work to continue. A user reply to a pending validation
+choice is a protocol exception: consume and persist that answer first instead of
+checking the still-stale binding again; then continue under the newly stored
+configuration. If a model was unverifiable and the user confirms a level for
+the current actionable message, do not ask again within that same assistant
+turn. Read
+[references/validation-strategies.md](references/validation-strategies.md) for
+the action contract, selection, persistence, overrides, and risk floors.
 
 Do not silently substitute README files, `AGENTS.md`, memory, or guesses for the canonical profile. Read repository instruction files as well; they can add project-specific constraints.
 

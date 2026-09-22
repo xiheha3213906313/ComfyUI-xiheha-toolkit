@@ -8,7 +8,7 @@ remind_after: null
 analysis_scope: full-static
 validation_level: simple
 validation_model: "Gemini 3.8 Flash (High)"
-validation_configured_at: 2026-09-21T23:41:54.878788+08:00
+validation_configured_at: 2026-09-22T16:38:54.726206+08:00
 validation_agent: "Antigravity"
 ---
 
@@ -22,7 +22,7 @@ validation_agent: "Antigravity"
 - 当前功能模块包括基础模型/LoRA 同目录 TXT 或 JSON sidecar 提示词配置（来源采集、配置选择、词条开关、提示词合并与展示）以及视频智能分割。
 - 采用经典 `NODE_CLASS_MAPPINGS` / `NODE_DISPLAY_NAME_MAPPINGS` 注册方式，前端由 `WEB_DIRECTORY = "./web"` 提供原生 ES Module 扩展。
 - 这是可继续增加同级工具的通用库，不应把仓库边界限定为 sidecar 提示词工具。
-- 当前版本源为根 `__init__.py` 的 `__version__ = "0.9.0"`。
+- 当前版本源为根 `__init__.py` 的 `__version__ = "0.9.1"`。
 
 ## Authoritative files
 
@@ -40,7 +40,7 @@ validation_agent: "Antigravity"
 | `web/shared/tooltip/` | Tooltip 纯解析与 DOM runtime；实例隔离和互斥唯一实现 | `web/styles/tooltip.css`、节点 controller |
 | `web/toolkit.css` / `web/styles/*.css` | 主样式清单与各 feature 的单一 CSS 源 | 现有 `xh-*` class、加载顺序、按需 Tooltip |
 | `tests/test_prompt_toolkit.py` | 解析、路径、节点契约和行为回归 | 任何用户可见行为或公共契约变更 |
-| `tests/test_smart_video_splitter.py` | 视频分割契约、算法、精确切片、缓存隔离与音频容错回归 | 视频分割功能变更 |
+| `tests/test_smart_video_splitter.py` / `tests/test_video_cutter.py` | 视频分割契约、算法、整数帧切片、缓存隔离与音频容错回归 | 视频分割功能变更 |
 | `tests/test_shared_tooltip.py` / `tests/frontend/*.test.mjs` | Tooltip、编辑器状态、视频状态、样式单次加载与生命周期回归 | 前端纯模块或 runtime 边界变更 |
 | `README.md` | 用户安装、节点和配置格式 | 只记录实际支持的用户行为 |
 | `CHANGELOG.md` | 用户可见版本历史 | 用户可见变更和版本号同步 |
@@ -144,8 +144,8 @@ validation_agent: "Antigravity"
 | 必选输入（全部为 Widget，无连线端口） | `video`: 视频选择；`force_rate`: FLOAT，默认 0；`custom_width`: INT，默认 0；`custom_height`: INT，默认 540；`format`: 格式选择；`split_mode`: `target`/目标（默认）、`fuzzy`/模糊、`exact`/精确；`fuzzy_min`: 最短时长；`target_duration`: 目标时长（`fuzzy` 中保留但不参与计算）；`fuzzy_max`: 最长时长；`algorithm`: 检测模式，三档为智能自适应/快速内容/高运动抑制；`sensitivity`: 灵敏度；`cut_threshold`: 切镜阈值；`peak_prominence`: 突变显著度 |
 | 隐藏输入 | `unique_id`: `UNIQUE_ID`；`splitter_state`: `STRING` |
 | 输出（顺序固定） | `SMART_VIDEO_STREAM`/`视频流`；`AUDIO`/`音频`；`INT`/`帧数` |
-| 行为 | `core/video_pipeline.py` 统一路径解析、参数规范化、尺寸、分段、切片和 manifest；目标/模糊模式组合颜色/亮度/边缘/感知哈希并检测硬切和渐变，智能与高运动模式按不同门槛使用光流抑制可解释运镜；`target` 按目标距离选点，`fuzzy` 在最低时长后采用最早可靠切点且无候选时按最长时长兜底，两者均使用一步前瞻；扫描窗口使用完整渐变上下文抑制边缘假候选；精确模式按帧固定间隔切分；节点执行只复用参数和内部修订标记均匹配的 manifest，前端主动计算强制重算 |
-| 持久状态 | `splitter_state` 记录当前选定/上传的视频路径（`video`）、分段模式、最短、目标与最长时长，工作流载入/未手动保存刷新时无损还原 |
+| 行为 | `core/video_pipeline.py` 统一路径解析、参数规范化、尺寸、分段、切片和 manifest；目标/模糊模式组合颜色/亮度/边缘/感知哈希并检测硬切和渐变，智能与高运动模式按不同门槛使用光流抑制可解释运镜；`target` 按目标距离选点，`fuzzy` 在最低时长后采用最早可靠切点且无候选时按最长时长兜底，两者均使用一步前瞻；扫描窗口使用完整渐变上下文抑制边缘假候选；精确模式按帧固定间隔切分；FFmpeg 切片使用内部精确帧率和左闭右开的整数帧区间，视频与音频分别通过 `trim`/`atrim` 收尾，三位小数时间只供显示；节点执行只复用参数和内部修订标记均匹配的 manifest，前端主动计算强制重算 |
+| 持久状态 | 原生 `video`、`split_mode`、`fuzzy_min`、`target_duration`、`fuzzy_max` widget 是工作流恢复基线；若宿主提供 `splitter_state` widget，则其 JSON 字段作为同步镜像优先覆盖对应值。工作流载入不会用创建默认值覆盖已恢复的原生 widget |
 | 前端 | `web/nodes/smart-video-splitter.js` 安装 `web/features/smart-video-splitter/` controller；提供上传/计算、3.0~15.0s 时间轴、参数显隐及统一生命周期清理 |
 
 ## Custom data and persisted state
@@ -253,6 +253,7 @@ TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支�
 
 - 不包含图像 Tensor，仅传递轻量元数据与切片文件路径。
 - 同步在节点专属缓存目录下写入 `manifest.json`。
+- `start_frame`/`end_frame` 是实际裁切边界且采用左闭右开语义；`start_time`/`end_time`/`duration` 为三位小数展示值，不作为 FFmpeg 寻址输入。
 
 ## Frontend integration
 

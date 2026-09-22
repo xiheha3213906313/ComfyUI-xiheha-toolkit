@@ -19,6 +19,29 @@ For each affected node, verify as one unit:
 
 Never add placeholder inputs or pass-through outputs just for convenient wiring. Optional inputs must have a valid disconnected behavior. Keep internal identifiers stable even when changing display labels unless workflow breakage is explicitly accepted.
 
+## Hidden execution inputs versus frontend widgets
+
+A Python `INPUT_TYPES["hidden"]` entry defines an execution-input contract. It
+does not by itself prove that the installed frontend creates a corresponding
+entry in `node.widgets`, exposes it to widget lookup helpers, or serializes it
+like an ordinary required/optional widget. ComfyUI versions and input kinds may
+differ, so do not make the opposite universal claim either.
+
+Before frontend code reads or writes a Python hidden input through a widget
+lookup:
+
+- verify the actual node/widget shape in the installed frontend or an
+  equivalent lifecycle harness;
+- define behavior when the widget is absent;
+- verify whether and where the value is serialized;
+- test absence as a normal case rather than relying only on optional chaining;
+- do not let parsing an absent value into creation defaults overwrite native
+  widgets that ComfyUI has already restored.
+
+If a durable frontend state carrier is required, create or use one through the
+repository's supported serialization mechanism instead of assuming the Python
+hidden declaration supplies it.
+
 ## Data and workflow compatibility
 
 - Treat custom type names and serialized field names as public contracts within saved workflows and connected nodes.

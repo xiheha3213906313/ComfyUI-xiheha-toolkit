@@ -13,6 +13,43 @@ import folder_paths
 from .video_meta import find_ffmpeg, target_size
 
 
+_MICROSECONDS_PER_SECOND = 1_000_000
+
+
+def _ceil_div(numerator: int, denominator: int) -> int:
+    return -(-numerator // denominator)
+
+
+def _format_microseconds(value: int) -> str:
+    seconds, microseconds = divmod(value, _MICROSECONDS_PER_SECOND)
+    return f"{seconds}.{microseconds:06d}"
+
+
+def frame_window_timestamps(
+    start_frame: int,
+    frame_count: int,
+    fps_numerator: int,
+    fps_denominator: int,
+) -> tuple[str, str]:
+    """Return a safe input seek and non-truncating duration for an integer frame window."""
+    if start_frame < 0 or frame_count <= 0:
+        raise ValueError("Frame window must have a non-negative start and positive length")
+    if fps_numerator <= 0 or fps_denominator <= 0:
+        raise ValueError("Frame rate must be positive")
+
+    start_scaled = start_frame * fps_denominator * _MICROSECONDS_PER_SECOND
+    if start_frame == 0:
+        seek_microseconds = 0
+    else:
+        # The largest whole microsecond strictly before the target frame timestamp.
+        # This avoids rounding a repeating timestamp upward onto the following frame.
+        seek_microseconds = max(0, _ceil_div(start_scaled, fps_numerator) - 1)
+
+    duration_scaled = frame_count * fps_denominator * _MICROSECONDS_PER_SECOND
+    duration_microseconds = _ceil_div(duration_scaled, fps_numerator)
+    return _format_microseconds(seek_microseconds), _format_microseconds(duration_microseconds)
+
+
 def get_node_cache_dir(node_id: str | int) -> str:
     """Return isolated temporary cache directory for a specific node instance."""
     safe_node_id = str(node_id).replace("/", "_").replace("\\", "_").replace("..", "")
@@ -37,24 +74,36 @@ def cut_single_segment(
     ffmpeg_exe: str,
     source_path: str,
     output_path: str,
-    start_time: float,
-    duration: float,
+    start_frame: int,
+    frame_count: int,
+    fps_numerator: int,
+    fps_denominator: int,
     target_w: int,
     target_h: int,
-    fps: float,
     has_audio: bool,
 ) -> None:
     """Slice a single segment accurately using ffmpeg with video re-encoding and audio preservation."""
-    filters = [f"scale={target_w}:{target_h}"]
+    filters = [
+        f"scale={target_w}:{target_h}",
+        f"trim=end_frame={frame_count}",
+        "setpts=PTS-STARTPTS",
+    ]
+    seek_time, duration = frame_window_timestamps(
+        start_frame,
+        frame_count,
+        fps_numerator,
+        fps_denominator,
+    )
+    frame_rate = f"{fps_numerator}/{fps_denominator}"
 
     cmd = [
         ffmpeg_exe,
         "-y",
-        "-ss", f"{start_time:.3f}",
-        "-t", f"{duration:.3f}",
+        "-ss", seek_time,
+        "-accurate_seek",
         "-i", source_path,
         "-vf", ",".join(filters),
-        "-r", f"{fps:.3f}",
+        "-r", frame_rate,
         "-c:v", "libx264",
         "-preset", "fast",
         "-crf", "19",
@@ -62,7 +111,10 @@ def cut_single_segment(
     ]
 
     if has_audio:
-        cmd.extend(["-c:a", "aac", "-b:a", "192k"])
+        cmd.extend([
+            "-af", f"atrim=duration={duration},asetpts=PTS-STARTPTS",
+            "-c:a", "aac", "-b:a", "192k",
+        ])
     else:
         cmd.append("-an")
 
@@ -78,7 +130,8 @@ def cut_single_segment(
         errors="replace",
     )
     if proc.returncode != 0:
-        raise RuntimeError(f"FFmpeg error cutting segment ({start_time}-{start_time+duration}):\n{proc.stderr}")
+        end_frame = start_frame + frame_count
+        raise RuntimeError(f"FFmpeg error cutting frame window [{start_frame}, {end_frame}):\n{proc.stderr}")
 
 
 def cut_and_cache_segments(
@@ -88,6 +141,8 @@ def cut_and_cache_segments(
     output_w: int,
     output_h: int,
     effective_fps: float,
+    fps_numerator: int,
+    fps_denominator: int,
     model_format: str,
     split_mode: str,
     settings: dict[str, Any],
@@ -116,11 +171,12 @@ def cut_and_cache_segments(
             ffmpeg_exe=ffmpeg_exe,
             source_path=source_path,
             output_path=seg_filepath,
-            start_time=seg["start_time"],
-            duration=seg["duration"],
+            start_frame=seg["start_frame"],
+            frame_count=seg["frame_count"],
+            fps_numerator=fps_numerator,
+            fps_denominator=fps_denominator,
             target_w=output_w,
             target_h=output_h,
-            fps=effective_fps,
             has_audio=has_audio,
         )
 

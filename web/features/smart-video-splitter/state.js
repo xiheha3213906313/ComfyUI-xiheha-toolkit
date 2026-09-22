@@ -52,14 +52,23 @@ export function normalizeSplitterState(value = {}) {
 }
 
 export function parseSplitterState(serialized, fallbackVideo = "") {
+    return restoreSplitterState(serialized, {
+        video: fallbackVideo && fallbackVideo !== "none" ? String(fallbackVideo) : "",
+    });
+}
+
+export function restoreSplitterState(serialized, widgetState = {}) {
     let parsed = {};
     try {
-        parsed = JSON.parse(String(serialized || "{}"));
+        const value = JSON.parse(String(serialized || "{}"));
+        if (value && typeof value === "object" && !Array.isArray(value)) parsed = value;
     } catch {
         parsed = {};
     }
-    if (!parsed.video && fallbackVideo && fallbackVideo !== "none") parsed.video = String(fallbackVideo);
-    return normalizeSplitterState(parsed);
+    const fallback = widgetState && typeof widgetState === "object" ? widgetState : {};
+    const merged = { ...fallback, ...parsed };
+    if (!parsed.video && fallback.video && fallback.video !== "none") merged.video = String(fallback.video);
+    return normalizeSplitterState(merged);
 }
 
 export function serializeSplitterState(state) {

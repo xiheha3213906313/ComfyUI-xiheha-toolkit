@@ -7,7 +7,7 @@ import { registerCustomTooltip, unregisterCustomTooltip } from "../../shared/too
 import { MIN_HEIGHT, MIN_WIDTH, preserveNodeSize } from "../../nodes/smart-video-splitter-size.js";
 import { apiUrl, getSplitStatus, getVideoInfo, splitVideo, uploadVideo } from "./api.js";
 import {
-    buildSplitPayload, normalizeSplitterState, parseSplitterState, serializeSplitterState,
+    buildSplitPayload, normalizeSplitterState, restoreSplitterState, serializeSplitterState,
     usesSceneDetection, videoViewPath,
 } from "./state.js";
 import { createSplitterView } from "./view.js";
@@ -32,6 +32,13 @@ function addVideoOption(widget, filename) {
 
 function valuesFromWidgets(node) {
     return Object.fromEntries(PARAMETER_WIDGETS.map((name) => [name, widgetByName(node, name)?.value]));
+}
+
+function persistedStateFromWidgets(node) {
+    return Object.fromEntries(
+        ["video", "split_mode", "fuzzy_min", "target_duration", "fuzzy_max"]
+            .map((name) => [name, widgetByName(node, name)?.value]),
+    );
 }
 
 export function createSmartVideoSplitterController(node, { customTooltip = false } = {}) {
@@ -75,7 +82,7 @@ export function createSmartVideoSplitterController(node, { customTooltip = false
         node,
         root,
         view,
-        state: parseSplitterState(stateWidget?.value, videoWidget?.value),
+        state: restoreSplitterState(stateWidget?.value, persistedStateFromWidgets(node)),
         dirty: false,
         disposed: false,
         renderStatus(message = null) {
@@ -227,7 +234,7 @@ export function createSmartVideoSplitterController(node, { customTooltip = false
             }
         },
         restoreFromWidgets() {
-            this.state = parseSplitterState(stateWidget?.value, videoWidget?.value);
+            this.state = restoreSplitterState(stateWidget?.value, persistedStateFromWidgets(node));
             if (this.state.video && videoWidget) {
                 addVideoOption(videoWidget, this.state.video);
                 videoWidget.value = this.state.video;

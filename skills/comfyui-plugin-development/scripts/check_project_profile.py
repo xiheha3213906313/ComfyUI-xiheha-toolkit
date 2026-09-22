@@ -109,7 +109,7 @@ def _validation_config(fields: dict[str, str | None], current_model: str | None)
         }
 
     normalized_current = str(current_model or "").strip()
-    if not normalized_current:
+    if not normalized_current or normalized_current.casefold() == "unknown":
         model_match: bool | None = None
         action = "confirm_validation_strategy"
         blocking = True
@@ -131,7 +131,8 @@ def _validation_config(fields: dict[str, str | None], current_model: str | None)
         "configured_at": configured_at.isoformat(),
         "current_model": normalized_current or None,
         "model_match": model_match,
-        "model_confirmation_required": not bool(normalized_current),
+        "model_confirmation_required": not bool(normalized_current)
+        or normalized_current.casefold() == "unknown",
         "action": action,
         "blocking": blocking,
         "reason": reason,

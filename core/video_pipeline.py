@@ -6,6 +6,7 @@ import json
 import math
 import os
 from dataclasses import dataclass
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Callable, Mapping
 
@@ -18,7 +19,7 @@ from .video_meta import DIMMAX, LOAD_FORMATS, get_video_metadata, target_size
 
 
 VIDEO_ALGORITHMS = DETECTION_MODES
-PIPELINE_CACHE_REVISION = "named-split-modes-v4"
+PIPELINE_CACHE_REVISION = "frame-accurate-av-cuts-v6"
 _CACHE_REVISION_FILENAME = ".pipeline_revision"
 
 
@@ -211,7 +212,16 @@ def run_video_split(
     progress_callback: Callable[[str, int, int], None] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     meta = get_video_metadata(video_path)
-    effective_fps = options.force_rate if options.force_rate > 0 else float(meta["fps"])
+    if options.force_rate > 0:
+        precise_rate = Fraction(str(options.force_rate)).limit_denominator(1_000_000)
+    else:
+        rate_numerator = int(meta.get("_fps_numerator", 0))
+        rate_denominator = int(meta.get("_fps_denominator", 0))
+        if rate_numerator > 0 and rate_denominator > 0:
+            precise_rate = Fraction(rate_numerator, rate_denominator)
+        else:
+            precise_rate = Fraction(str(meta["fps"]))
+    effective_fps = float(precise_rate)
     format_config = LOAD_FORMATS.get(options.format_name, {})
     downscale_ratio = format_config.get("dim", (8,))[0] if "dim" in format_config else 8
     output_width, output_height = target_size(
@@ -265,6 +275,8 @@ def run_video_split(
             output_w=output_width,
             output_h=output_height,
             effective_fps=effective_fps,
+            fps_numerator=precise_rate.numerator,
+            fps_denominator=precise_rate.denominator,
             model_format=options.format_name,
             split_mode=options.split_mode,
             settings=settings,

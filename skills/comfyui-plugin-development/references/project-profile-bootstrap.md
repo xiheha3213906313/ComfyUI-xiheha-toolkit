@@ -38,6 +38,13 @@ field so one answer is never inferred from the other.
 
 Record the selection, exact current model label or identifier, current coding-agent host name, and current local timestamp in the profile frontmatter. Pass the model and agent to `set_validation_strategy.py` with `--model` and `--agent`. If either identity is unavailable, record `unknown`; an unknown model disables automatic model-mismatch detection, while an unknown agent forces live tool discovery. A declined profile still records this configuration.
 
+In Codex, always obtain the current conversation's model identity from runtime
+or system context and pass it with `--agent Codex`; do not initialize the
+profile by copying a model name from an older profile, transcript, or project
+document. If only a trustworthy model family is exposed, record it exactly
+without guessing a more specific selector ID. If Codex exposes no trustworthy
+identity at all, use `unknown` and do not infer one from capability.
+
 ### Missing or invalid profile
 
 Do not begin a broad parse without notifying the user unless the current request explicitly asks for project parsing or profile creation.

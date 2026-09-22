@@ -5,16 +5,24 @@
 ## 开始任何开发前
 
 1. 完整读取 `skills/comfyui-plugin-development/SKILL.md`。
-2. 运行：
+2. 从当前消息的宿主/系统上下文取得当前模型名称和 Coding Agent 名称。Codex
+   环境对每条要求制定项目计划、检查/诊断仓库、执行或继续任务、修改节点/代码/
+   配置/文档、运行命令、测试或验证的用户消息，都必须先静默传入当前消息实际暴露
+   的模型名称进行检查；同一对话内的后续消息也不例外。普通聊天，以及不要求继续
+   工作的纯状态询问不检查。不得拿项目档案中已保存的模型冒充当前模型，也不得因为
+   上一条消息匹配就省略。
+   如果宿主完全没有提供可信模型名称，显式传入 `unknown` 并执行返回的确认流程，
+   不得猜测具体型号。
+3. 运行（将占位符替换为当前对话的真实值）：
 
    ```powershell
-   & "E:\HuiShi_launcher-WorkFisher-V2\python\python.exe" skills\comfyui-plugin-development\scripts\check_project_profile.py --root .
+   & "E:\HuiShi_launcher-WorkFisher-V2\python\python.exe" skills\comfyui-plugin-development\scripts\check_project_profile.py --root . --model "<当前模型名称>" --agent "<当前 Coding Agent>"
    ```
 
    如果该 Python 不存在，可使用环境中可用的 Python。
-3. `ready` 或 `partial`：完整读取根目录 `COMFYUI_PLUGIN_PROJECT.md`，再按技能路由读取与任务有关的参考文件。
-4. `missing`、`declined`、`reminder_due` 或 `invalid`：先执行技能中的 `references/project-profile-bootstrap.md`，不要凭记忆直接开发。
-5. 检查 `git status --short`。已有修改和未跟踪文件属于用户，不得覆盖、回退或顺手清理。
+4. `ready` 或 `partial`：完整读取根目录 `COMFYUI_PLUGIN_PROJECT.md`，再按技能路由读取与任务有关的参考文件。
+5. `missing`、`declined`、`reminder_due` 或 `invalid`：先执行技能中的 `references/project-profile-bootstrap.md`，不要凭记忆直接开发。
+6. 检查 `git status --short`。已有修改和未跟踪文件属于用户，不得覆盖、回退或顺手清理。
 
 项目档案是索引，不是源代码的替代品。所有将要修改的节点、端口、类型、路由、状态键和前端映射都必须在当前源码中再次核对；源码与档案冲突时，以源码为当前实现，并在本次任务中修正稳定的档案事实。
 

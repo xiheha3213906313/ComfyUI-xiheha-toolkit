@@ -9,7 +9,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from core import video_pipeline
-from core.video_pipeline import VideoSplitOptions, public_video_stream, run_video_split
+from core.video_pipeline import (
+    VideoSplitOptions,
+    public_video_metadata,
+    public_video_stream,
+    run_video_split,
+)
 from nodes import smart_video_splitter as splitter_node
 
 
@@ -154,6 +159,15 @@ class VideoPipelineTests(unittest.TestCase):
         self.assertNotIn("cache_dir", public)
         self.assertNotIn("path", public["source"])
         self.assertNotIn("path", public["segments"][0])
+
+    def test_public_metadata_hides_internal_precise_frame_rate(self):
+        public = public_video_metadata({
+            "filename": "input.mp4",
+            "fps": 23.976,
+            "_fps_numerator": 24000,
+            "_fps_denominator": 1001,
+        })
+        self.assertEqual(public, {"filename": "input.mp4", "fps": 23.976})
 
 
 if __name__ == "__main__":

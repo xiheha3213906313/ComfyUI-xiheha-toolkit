@@ -75,7 +75,7 @@ For every changed identifier or shape, search again and reconcile all owners/con
 | Node added/renamed | Python/Node registry, display mapping, frontend node ID, module dispatch, docs, tests, examples |
 | Input/output changed | declaration, execution signature/return, frontend port labels, graph traversal, slot indexes, tests, saved-state assumptions |
 | Custom data changed | every producer/consumer, route schema, frontend payload, fixtures, docs, profile |
-| UI state changed | widget declaration, serialization, configure/load hooks, execution payload, refresh logic, tests/manual workflow |
+| UI state changed | Python input kind versus actual widget existence, canonical owner, mirrors and restore precedence, serialization, configure/load hooks, execution payload, refresh logic, controller tests/manual workflow |
 | Route changed | registration, client, validation, response parsing, error display, security tests/docs |
 | Model path changed | loader metadata, folder resolver, containment, optional loaders, missing metadata, nested paths |
 

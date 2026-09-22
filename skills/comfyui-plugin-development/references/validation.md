@@ -77,6 +77,40 @@ Do not run destructive, networked, credentialed, migration, high-cost GPU, or
 user-state-disrupting checks merely because the level is `careful`. Apply the
 normal authorization and restart-safety rules.
 
+## Frontend persistence evidence floor
+
+At every validation level, a change that modifies or claims workflow reload,
+node cloning, or unsaved-draft recovery must establish more than syntax and a
+parser/serializer round trip. At minimum:
+
+- test the controller's declared restoration precedence;
+- test a missing custom carrier while native widgets already hold non-default
+  restored values;
+- inspect the next serialized workflow snapshot after a programmatic change;
+- save and reopen once in a safe isolated workflow when saved-workflow recovery
+  is claimed;
+- additionally refresh without manual save only when unsaved-draft recovery is
+  claimed and the check can be isolated safely.
+
+Exercise the applicable lifecycle matrix:
+
+1. new node with no persisted values uses creation defaults;
+2. native widgets contain non-default restored values while optional custom
+   state is absent;
+3. custom state is empty, malformed, or contains only some fields;
+4. custom and native values conflict and the documented precedence wins;
+5. creation runs before configuration without defaults overwriting restored
+   values;
+6. a delayed creation/default request cannot overwrite configured state;
+7. clone and save/reopen preserve state when those behaviors are claimed;
+8. unsaved refresh uses the actual host draft snapshot when that behavior is
+   claimed.
+
+Use an isolated instance, tab/workflow that cannot replace user work, or another
+safe test boundary. If live save/reopen or refresh cannot be performed safely,
+report that evidence as `not run`; do not replace it with syntax, source-string,
+or pure round-trip assertions.
+
 ## Failure classification and retry
 
 When a formal validation attempt fails, classify it before retrying:
@@ -101,7 +135,7 @@ later corrected command passes.
 | Model/latent/tensor | Identity or intended mutation, shape/batch, dtype, device, precision, memory/offload path; GPU path only if claimed |
 | Existing/batch files | Chosen preservation and transaction policies, unknown-content round trip, failure after a partial write, retry/conflict behavior |
 | Filesystem/sidecar | Allowed roots, nested/missing/malformed files, traversal and absolute-path rejection |
-| Frontend state | Pure-function tests for persistence/dirty/save transitions where practical; verify programmatic updates reach serialization, restored values survive incomplete initial options, and stale creation-time requests cannot overwrite configured state; syntax alone is insufficient |
+| Frontend state | Ownership/precedence test plus controller lifecycle evidence: missing/empty/malformed/partial carriers, restored native non-default values, programmatic updates reaching serialization, incomplete initial options, and stale creation-time requests; pure round-trip and syntax evidence are insufficient |
 | Frontend module split | Explicit ESM parse, moved-symbol ownership search, entry-point import/patch smoke check |
 | Async preview/save | Rapid changes proving stale completion cannot win or clear newer edits |
 | External plugin | Installed compatible version and real connection, or explicitly not run |

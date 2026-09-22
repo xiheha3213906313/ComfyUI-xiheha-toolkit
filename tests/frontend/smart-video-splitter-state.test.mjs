@@ -6,6 +6,7 @@ import {
     MIN_EDGE_GAP,
     moveTimelineHandle,
     parseSplitterState,
+    restoreSplitterState,
     round1,
     setSplitMode,
     usesSceneDetection,
@@ -21,6 +22,25 @@ test("splitter state restores video and normalizes timeline constraints", () => 
     assert.ok(state.target_duration <= state.fuzzy_max);
     assert.ok(state.fuzzy_max - state.fuzzy_min >= MIN_EDGE_GAP);
     assert.equal(parseSplitterState("bad", "fallback.mp4").video, "fallback.mp4");
+});
+
+test("workflow widget values survive when the optional state widget is absent", () => {
+    const widgetState = {
+        video: "saved.mp4",
+        split_mode: "exact",
+        fuzzy_min: 3.5,
+        target_duration: 8.2,
+        fuzzy_max: 12.4,
+    };
+    assert.deepEqual(restoreSplitterState(undefined, widgetState), widgetState);
+    assert.deepEqual(restoreSplitterState("{}", widgetState), widgetState);
+
+    const explicitState = restoreSplitterState('{"split_mode":"fuzzy","fuzzy_min":5,"fuzzy_max":9}', widgetState);
+    assert.equal(explicitState.video, "saved.mp4");
+    assert.equal(explicitState.split_mode, "fuzzy");
+    assert.equal(explicitState.fuzzy_min, 5);
+    assert.equal(explicitState.target_duration, 8.2);
+    assert.equal(explicitState.fuzzy_max, 9);
 });
 
 test("timeline movement enforces fuzzy and exact bounds", () => {

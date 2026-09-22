@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import shutil
+from fractions import Fraction
 from typing import Any
 
 import numpy as np
@@ -117,7 +118,7 @@ def get_video_metadata(video_path: str) -> dict[str, Any]:
     if fps <= 0:
         fps = 30.0
 
-    duration = total_frames / fps if total_frames > 0 else 0.0
+    precise_rate = Fraction(fps).limit_denominator(1_000_000)
 
     # Check for audio stream presence via PyAV if available
     has_audio = False
@@ -125,13 +126,26 @@ def get_video_metadata(video_path: str) -> dict[str, Any]:
         import av
         with av.open(video_path) as container:
             has_audio = any(s.type == "audio" for s in container.streams)
+            video_stream = next((s for s in container.streams if s.type == "video"), None)
+            if video_stream is not None and video_stream.average_rate:
+                stream_rate = Fraction(
+                    int(video_stream.average_rate.numerator),
+                    int(video_stream.average_rate.denominator),
+                )
+                if stream_rate > 0:
+                    precise_rate = stream_rate
     except Exception:
         has_audio = False
+
+    precise_fps = float(precise_rate)
+    duration = total_frames / precise_fps if total_frames > 0 else 0.0
 
     return {
         "path": video_path,
         "filename": os.path.basename(video_path),
-        "fps": round(fps, 3),
+        "fps": round(precise_fps, 3),
+        "_fps_numerator": precise_rate.numerator,
+        "_fps_denominator": precise_rate.denominator,
         "width": width,
         "height": height,
         "duration": round(duration, 3),

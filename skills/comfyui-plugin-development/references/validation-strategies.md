@@ -101,6 +101,8 @@ The configured level is a default, not permission to skip evidence needed for a 
 
 - existing user files, batch writes, destructive operations, or migration behavior;
 - public node IDs, port order/types, persisted workflow state, routes, or custom data schemas;
+- frontend saved-state, workflow reload, cloning, or unsaved-draft recovery,
+  including changes to state carriers or restoration precedence;
 - model/tensor dtype, device, shapes, offload, precision, memory, or output quality;
 - path containment, network access, authentication, secrets, or external services;
 - module splits, shared-pipeline consolidation, or ownership moves that can
@@ -115,6 +117,17 @@ the user briefly when a risk floor causes extra validation.
 
 ## Model changes and conversation reminders
 
+In Codex, every project-actionable user message must pass `--agent Codex` and
+the current turn's trustworthy model identity to `check_project_profile.py`
+before project-specific planning, inspection, commands, edits, tests, or
+validation. This applies to follow-up instructions and “continue” messages in
+the same conversation, not only its first task. Never copy `validation_model`
+from the profile into `--model`: that would compare the saved value with itself
+and make model-switch detection meaningless. If Codex exposes only a model
+family, use that exact exposed value without inventing a variant. If no
+trustworthy model identity is exposed, pass the literal `unknown`; the checker
+treats it as unavailable and requires confirmation.
+
 `check_project_profile.py` returns a machine-readable action inside `validation`:
 
 - `choose_validation_strategy` with `blocking: true`: configuration is absent
@@ -125,13 +138,30 @@ the user briefly when a risk floor causes extra validation.
   available model IDs and saved level, use the same three-level structured
   choice, and wait. Bind a known current model when persisting; never bind a
   guess.
-- `continue` with `blocking: false`: configured and current models match. On the first project-related turn of a genuinely new conversation, remind the user of the saved level in one short non-blocking sentence and continue. Later tasks in that conversation continue silently.
+- `continue` with `blocking: false`: configured and current models match. On the
+  first project-related turn of a genuinely new conversation, state both the
+  verified current model and saved validation level in one short non-blocking
+  sentence and continue. Do not ask for confirmation. On every later
+  project-actionable message, perform the check silently and continue without
+  repeating the model or level.
 
 Unknown actions or contradictory `action`/`blocking` values are blocking configuration errors; do not infer permission to edit.
 
 It also returns `question_tool`, derived from `--agent` or the stored `validation_agent`. This is only a preferred-name hint. Before asking, follow [user-input-tools.md](user-input-tools.md) and verify the candidate against the tools actually exposed in the current mode.
 
-A new conversation means no earlier visible turn has discussed or modified this project. A new project task is a distinct requested outcome. Follow-up messages that refine the same in-progress change do not require another check. Outside the one new-conversation reminder, report the saved setting only when asking because of missing, mismatched, or unverifiable identity, or when the user requests it.
+A new conversation means no earlier visible turn has discussed or modified this
+project. A project-actionable message requests a project-specific plan,
+repository inspection or diagnosis, implementation or continuation,
+node/code/config/documentation changes, commands, tests, or validation. Each
+such Codex message requires a new silent check before action. General discussion
+or a status-only question with no request to continue work does not. Multiple
+tools within one assistant turn do not require repeated checks.
+
+When the user's message answers a pending validation-level/model-binding
+question, persist that explicit answer first; rerunning against the old binding
+would create a loop. Outside the one new-conversation model-and-level reminder,
+report the saved setting only when asking because of missing, mismatched, or
+unverifiable identity, or when the user requests it.
 
 Do not judge the new model as stronger or weaker unless product metadata explicitly says so. The user chooses the persistent level; task risk still determines mandatory safety evidence.
 

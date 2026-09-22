@@ -45,6 +45,50 @@ persistence owner: verified native widget serialization or an explicit custom
 state object. Do not split related state between the two based only on an
 assumption that a native-looking widget will be tracked automatically.
 
+For every change that adds or repairs saved/draft state, make a compact
+ownership and restoration table before editing:
+
+| State | UI source | Canonical owner | Mirrors | Missing/corrupt fallback | Restore precedence |
+| --- | --- | --- | --- | --- | --- |
+| Example field | control/widget | native widget or explicit custom state | optional named mirror | verified persisted source, then creation default | explicit documented order |
+
+The table must identify conflicts as well as happy paths. If two carriers store
+the same value, name the authority, explain why the mirror exists, and define
+which value wins when one carrier is absent, empty, malformed, partial, or
+stale. Creation defaults are allowed only when no valid persisted source exists;
+they are not a fallback that may overwrite an already restored native widget.
+
+Python hidden inputs and frontend-hidden widgets are different concepts. A
+Python `INPUT_TYPES["hidden"]` declaration does not guarantee an ordinary
+serialized entry in `node.widgets`. Before using a widget lookup for that name,
+verify the installed runtime behavior and treat a missing widget as a required
+restoration case. See [node-contracts.md](node-contracts.md#hidden-execution-inputs-versus-frontend-widgets).
+
+The combination below requires an explicit persistence audit:
+
+- a Python hidden input is looked up from frontend widgets;
+- a custom JSON/string state carrier is parsed;
+- ordinary native widgets also store some of the same values;
+- restoration reads the custom carrier and then writes all native widgets.
+
+Search every access to the hidden name, widget lookup, parser/serializer,
+creation/configuration hook, restore/sync function, and programmatic
+`widget.value` assignment. Verify the missing-carrier path before accepting the
+design. Optional chaining prevents an exception; it does not establish correct
+fallback semantics.
+
+A safe generic restoration shape is:
+
+```text
+native baseline = read already-restored native widgets
+optional overlay = read and validate the custom carrier if it actually exists
+restored state = normalize(merge by the documented precedence)
+```
+
+An absent or invalid optional overlay must not manufacture defaults that replace
+the native baseline. Do not require every feature to use a custom JSON state or
+forbid deliberate mirrors; require explicit ownership and precedence instead.
+
 Programmatically assigning `widget.value` and invoking its callback proves only
 that local code ran. It does not prove that workflow serialization contains the
 new value, that the graph was marked changed, or that the host's draft tracker
@@ -80,6 +124,11 @@ Treat creation, configuration, and async refresh as one lifecycle:
 For any feature claiming draft or reload persistence, test the exact promised
 boundary rather than only the happy path:
 
+- exercise the controller's actual restoration precedence with the custom
+  carrier absent while native widgets already contain non-default restored
+  values;
+- cover empty, malformed, and partial custom state plus a declared conflict
+  between custom and native carriers;
 - make an async programmatic change and inspect the next serialized workflow
   snapshot;
 - if unsaved-refresh recovery is claimed, use an isolated or otherwise safe
@@ -93,6 +142,12 @@ boundary rather than only the happy path:
 If the installed ComfyUI version does not expose a reliable draft notification
 path, report unsaved-refresh recovery as unsupported or not verified instead of
 equating ordinary workflow serialization with host draft persistence.
+
+A parser/serializer round trip proves only the state format. It is not evidence
+that the relevant widget exists, that the controller chose the correct source,
+that ComfyUI serialized the value, or that save/reload and draft recovery work.
+At least one test must exercise the controller/lifecycle restoration path, not
+only exported pure parsers.
 
 ## Module refactors and lifecycle smoke checks
 
