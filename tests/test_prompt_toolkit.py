@@ -11,7 +11,7 @@ from core.prompt_utils import ensure_trailing_comma, normalize_prompt_line
 from core.source_utils import model_to_source
 from nodes.easy_lora_stack import StackSource
 from nodes.model_source import ModelSource
-from nodes.prompt_preview import PromptPreview, build_preview_rows, preview_token_key
+from nodes.prompt_preview import PREVIEW_CONTEXTS_KEY, PromptPreview, build_preview_rows, preview_token_key
 from nodes.prompt_selector import build_prompt_rows
 from nodes.prompt_merge import PromptMerger
 from nodes.prompt_display import PromptDisplay
@@ -330,6 +330,22 @@ class NodeBehaviorTests(unittest.TestCase):
         self.assertEqual(rows[0]["positive_enabled"], [True, False])
         result = PromptPreview().preview("模型A", "face, hair", "", {key: False})
         self.assertEqual(result["result"], ("face,", ""))
+
+    def test_preview_token_switches_are_scoped_to_active_config_context(self):
+        config_1 = json.dumps(["models/example.safetensors", 1], ensure_ascii=False, separators=(",", ":"))
+        config_2 = json.dumps(["models/example.safetensors", 2], ensure_ascii=False, separators=(",", ":"))
+        config_1_key = preview_token_key("模型A", "positive", 0, config_1)
+        self.assertEqual(config_1_key, '["[\\"models/example.safetensors\\",1]","positive",0]')
+        state = {PREVIEW_CONTEXTS_KEY: [config_1], config_1_key: False}
+
+        config_1_rows = build_preview_rows("模型A", "face, hair", "", state)
+        self.assertEqual(config_1_rows[0]["positive_enabled"], [False, True])
+        self.assertEqual(PromptPreview().preview("模型A", "face, hair", "", state)["result"], ("hair,", ""))
+
+        state[PREVIEW_CONTEXTS_KEY] = [config_2]
+        config_2_rows = build_preview_rows("模型A", "face, hair", "", state)
+        self.assertEqual(config_2_rows[0]["positive_enabled"], [True, True])
+        self.assertEqual(PromptPreview().preview("模型A", "face, hair", "", state)["result"], ("face, hair,", ""))
 
     def test_merge_has_one_required_and_three_optional_inputs(self):
         inputs = PromptMerger.INPUT_TYPES()

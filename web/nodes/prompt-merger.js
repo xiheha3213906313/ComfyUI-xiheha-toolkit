@@ -12,6 +12,7 @@ import {
     applyPortLabels,
 } from "../shared/widgets.js";
 import { isConnected } from "../shared/graph.js";
+import { afterNodeConfigure } from "../shared/lifecycle.js";
 import { markDirty } from "../shared/workflow.js";
 import { parseUiPayload } from "../shared/payload.js";
 
@@ -65,6 +66,9 @@ function mergeController(node) {
             while (fixedValues.length < 4) fixedValues.push("");
             this.render(fixedValues);
         },
+        restoreFromWidgets() {
+            this.render(null);
+        },
     };
     [1, 2, 3, 4].forEach((index) => hideWidget(widgetByName(node, `prompt_${index}`)));
     node.__xhMerge = controller;
@@ -79,6 +83,9 @@ export function patch(nodeType) {
         applyPortLabels(this);
         mergeController(this);
     };
+    afterNodeConfigure(nodeType, function () {
+        this.__xhMerge?.restoreFromWidgets?.();
+    });
     const originalExecuted = nodeType.prototype.onExecuted;
     nodeType.prototype.onExecuted = function (message) {
         originalExecuted?.apply(this, arguments);

@@ -1,13 +1,9 @@
-// Pure prompt row transforms plus graph-level prompt propagation.
+// Prompt row transforms plus graph-level prompt propagation.
+import { promptTokens, rowToPreviewRow } from "../features/prompt-preview/state.js";
 import { PREVIEW_INPUTS } from "./constants.js";
 import { connectedNode, graphNodes } from "./graph.js";
 
-export function promptTokens(value) {
-    return String(value ?? "")
-        .split(/[,，]/)
-        .map((item) => item.replace(/\s+/g, " ").trim())
-        .filter(Boolean);
-}
+export { promptTokens, rowToPreviewRow } from "../features/prompt-preview/state.js";
 
 export function selectorRowsFromInfos(infos, state) {
     return infos
@@ -25,18 +21,6 @@ export function selectorRowsFromInfos(infos, state) {
             };
         })
         .filter(Boolean);
-}
-
-export function rowToPreviewRow(row) {
-    const modelName = row.display_name || row.model_name || row.source_name || "";
-    return {
-        display_name: modelName,
-        model_name: modelName,
-        positive_tokens: row.positive_tokens || promptTokens(row.positive),
-        negative_tokens: row.negative_tokens || promptTokens(row.negative),
-        positive_enabled: Array.isArray(row.positive_enabled) ? row.positive_enabled : null,
-        negative_enabled: Array.isArray(row.negative_enabled) ? row.negative_enabled : null,
-    };
 }
 
 export function previewHasAllInputsFrom(node, source = null) {

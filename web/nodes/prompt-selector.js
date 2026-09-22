@@ -18,6 +18,7 @@ import {
     applyPortLabels,
 } from "../shared/widgets.js";
 import { connectedNode, graphNodes, nodeTypeId } from "../shared/graph.js";
+import { afterNodeConfigure } from "../shared/lifecycle.js";
 import { markDirty } from "../shared/workflow.js";
 import { parseUiPayload } from "../shared/payload.js";
 import {
@@ -64,14 +65,20 @@ function selectorController(node) {
                 this.state = {};
             }
         },
-        saveState() {
+        restoreFromWidgets() {
+            this.refreshSequence += 1;
+            this.readState();
+            this.runtimeRows = null;
+            this.render();
+        },
+        saveState({ notify = true } = {}) {
             const widget = widgetByName(node, "selection_state");
             if (widget) {
                 const value = JSON.stringify(this.state);
                 widget.value = value;
                 if (widget.inputEl) widget.inputEl.value = value;
             }
-            markDirty(node);
+            if (notify) markDirty(node);
         },
         getRows() {
             if (this.runtimeRows) return this.runtimeRows;
@@ -166,6 +173,7 @@ function selectorController(node) {
                 this.infos = infos;
                 this.error = null;
                 this.runtimeRows = null;
+                const stateBeforeNormalization = JSON.stringify(this.state);
                 for (const info of this.infos) {
                     const first = info.configs?.[0];
                     if (!(info.source_name in this.state)) this.state[info.source_name] = first ? Number(first.index) : null;
@@ -173,7 +181,7 @@ function selectorController(node) {
                         this.state[info.source_name] = first ? Number(first.index) : null;
                     }
                 }
-                this.saveState();
+                this.saveState({ notify: JSON.stringify(this.state) !== stateBeforeNormalization });
                 this.render();
             } catch (error) {
                 if (sequence !== this.refreshSequence) return;
@@ -207,6 +215,9 @@ export function patch(nodeType) {
         selectorController(this);
         setTimeout(() => this.__xhSelector.refreshFromSource(), 0);
     };
+    afterNodeConfigure(nodeType, function () {
+        this.__xhSelector?.restoreFromWidgets?.();
+    });
     const originalExecuted = nodeType.prototype.onExecuted;
     nodeType.prototype.onExecuted = function (message) {
         originalExecuted?.apply(this, arguments);

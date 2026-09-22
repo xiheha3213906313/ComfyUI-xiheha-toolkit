@@ -1,5 +1,6 @@
 // XH_PromptConfigEditor node adapter. UI/state lives under features/prompt-config-editor.
 import { CONFIG_EDITOR_NODE } from "../shared/constants.js";
+import { afterNodeConfigure } from "../shared/lifecycle.js";
 import { applyPortLabels } from "../shared/widgets.js";
 import { createPromptConfigEditorController } from "../features/prompt-config-editor/controller.js";
 
@@ -13,6 +14,9 @@ export function patch(nodeType) {
         createPromptConfigEditorController(this);
         setTimeout(() => this.__xhPromptConfigEditor?.refreshFromSource(), 0);
     };
+    afterNodeConfigure(nodeType, function () {
+        this.__xhPromptConfigEditor?.restoreFromWidgets?.();
+    });
     const originalConnections = nodeType.prototype.onConnectionsChange;
     nodeType.prototype.onConnectionsChange = function () {
         const result = originalConnections?.apply(this, arguments);

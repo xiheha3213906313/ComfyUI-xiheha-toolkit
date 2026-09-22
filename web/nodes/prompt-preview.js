@@ -12,21 +12,23 @@ import {
     applyPortLabels,
 } from "../shared/widgets.js";
 import { connectedNode, nodeTypeId } from "../shared/graph.js";
+import { afterNodeConfigure } from "../shared/lifecycle.js";
 import { markDirty } from "../shared/workflow.js";
 import { parseUiPayload } from "../shared/payload.js";
 import {
     notifyPromptDisplays,
     previewHasAllInputsFrom,
-    rowToPreviewRow,
 } from "../shared/prompt-flow.js";
+import {
+    isPreviewTokenEnabled,
+    previewTokenKey,
+    rowToPreviewRow,
+    syncPreviewTokenState,
+} from "../features/prompt-preview/state.js";
 
 export const NODE_ID = PREVIEW_NODE;
 
 export { rowToPreviewRow, previewHasAllInputsFrom } from "../shared/prompt-flow.js";
-
-function previewTokenKey(modelName, side, index) {
-    return `${String(modelName || "").trim()}|${side}|${index}`;
-}
 
 function previewController(node) {
     if (node.__xhPreview) return node.__xhPreview;
@@ -46,30 +48,30 @@ function previewController(node) {
         readTokenState() {
             try {
                 const parsed = JSON.parse(String(widgetValue(node, "token_state", "{}") || "{}"));
-                this.tokenState = parsed && typeof parsed === "object" ? parsed : {};
+                this.tokenState = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
             } catch {
                 this.tokenState = {};
             }
         },
-        saveTokenState() {
+        restoreFromWidgets() {
+            this.readTokenState();
+            this.render();
+            notifyPromptDisplays(node);
+        },
+        saveTokenState({ notify = true } = {}) {
             const widget = widgetByName(node, "token_state");
             const value = JSON.stringify(this.tokenState);
             if (widget) {
                 widget.value = value;
                 if (widget.inputEl) widget.inputEl.value = value;
             }
-            markDirty(node);
+            if (notify) markDirty(node);
         },
         isTokenEnabled(row, side, index) {
-            const key = previewTokenKey(row.model_name, side, index);
-            if (Object.prototype.hasOwnProperty.call(this.tokenState, key)) {
-                return this.tokenState[key] !== false;
-            }
-            const enabled = row[`${side}_enabled`];
-            return !Array.isArray(enabled) || enabled[index] !== false;
+            return isPreviewTokenEnabled(this.tokenState, row, side, index);
         },
         setTokenEnabled(row, side, index, enabled) {
-            const key = previewTokenKey(row.model_name, side, index);
+            const key = previewTokenKey(row, side, index);
             if (enabled) delete this.tokenState[key];
             else this.tokenState[key] = false;
             this.saveTokenState();
@@ -77,6 +79,11 @@ function previewController(node) {
         },
         setRows(rows) {
             this.rows = Array.isArray(rows) ? rows.map(rowToPreviewRow) : [];
+            const nextState = syncPreviewTokenState(this.tokenState, this.rows);
+            if (JSON.stringify(nextState) !== JSON.stringify(this.tokenState)) {
+                this.tokenState = nextState;
+                this.saveTokenState({ notify: false });
+            }
             this.render();
             notifyPromptDisplays(node);
         },
@@ -169,6 +176,9 @@ export function patch(nodeType) {
         previewController(this);
         setTimeout(() => this.__xhPreview.refreshFromUpstream(), 0);
     };
+    afterNodeConfigure(nodeType, function () {
+        this.__xhPreview?.restoreFromWidgets?.();
+    });
     const originalExecuted = nodeType.prototype.onExecuted;
     nodeType.prototype.onExecuted = function (message) {
         originalExecuted?.apply(this, arguments);

@@ -8,7 +8,7 @@ remind_after: null
 analysis_scope: full-static
 validation_level: simple
 validation_model: "Gemini 3.8 Flash (High)"
-validation_configured_at: 2026-09-22T16:38:54.726206+08:00
+validation_configured_at: 2026-09-22T19:43:36.888784+08:00
 validation_agent: "Antigravity"
 ---
 
@@ -35,7 +35,7 @@ validation_agent: "Antigravity"
 | `web/shared/constants.js` | 前端节点 ID、外部 loader 映射、端口显示标签 | Python 注册/端口顺序/外部真实标识 |
 | `web/xiheha_toolkit.js` | 唯一 `app.registerExtension` 入口和节点模块分发 | 新前端节点模块、外部 observer |
 | `web/nodes/*.js` | 节点 ID、生命周期 patch 与 feature controller 安装入口 | Python 节点 ID、状态 widget、payload key |
-| `web/features/*/` | 配置编辑器及视频分割器的状态、视图、接口/时间轴与 controller | 持久状态、异步序列、生命周期清理 |
+| `web/features/*/` | 配置编辑器、提示词控制及视频分割器的状态、视图、接口/时间轴与 controller | 持久状态、异步序列、生命周期清理 |
 | `web/shared/*.js` | graph、widgets、layout、workflow、payload、prompt-flow、API 与上游监听 | 外部端口/widget、异步刷新、状态键 |
 | `web/shared/tooltip/` | Tooltip 纯解析与 DOM runtime；实例隔离和互斥唯一实现 | `web/styles/tooltip.css`、节点 controller |
 | `web/toolkit.css` / `web/styles/*.css` | 主样式清单与各 feature 的单一 CSS 源 | 现有 `xh-*` class、加载顺序、按需 Tooltip |
@@ -94,9 +94,9 @@ validation_agent: "Antigravity"
 | 必选输入（声明顺序） | `model_names`、`positive_prompts`、`negative_prompts`: `STRING`、多行、`forceInput: true`；`token_state`: `STRING`、默认 `{}`、`hidden: true` |
 | 输出（顺序固定） | 两个 `STRING`：`正向提示词`、`负向提示词` |
 | 行为 | 逗号拆分词条；按开关过滤后分别合并，非空结果补尾部 ASCII 逗号；三路连接完整时前端才实时预览 |
-| 执行返回 | `{"ui": {"xh_rows": [<JSON 字符串>]}, "result": (positive, negative)}` |
-| 持久状态 | `token_state` 键为 `<model_name>|positive|<index>` 或 `<model_name>|negative|<index>`，值缺省为启用 |
-| 前端 | `web/nodes/prompt-preview.js`；隐藏状态 widget，controller 为 `__xhPreview` |
+| 执行返回 | `{"ui": {"xh_rows": [<JSON 字符串>]}, "result": (positive, negative)}`；行内 `context_id` 保持前后端配置上下文一致 |
+| 持久状态 | `token_state` 用 `__xh_contexts` 记录当前各行的来源模型/配置上下文，词条键按该上下文、正负面和词条序号隔离，值缺省为启用；旧 `<model_name>|<side>|<index>` 键会迁移到当前配置 |
+| 前端 | `web/nodes/prompt-preview.js`；纯状态位于 `web/features/prompt-preview/state.js`，隐藏状态 widget，controller 为 `__xhPreview` |
 
 ### `XH_PromptMerger`
 
@@ -264,6 +264,7 @@ TXT 支持 `正向`、`负向`、`positive`、`negative` 及编号后缀，支�
 - selector/preview/merger/display 的 DOM 区域最小尺寸当前为 400×300；config editor 为 520×370，滚动 widget 最小内容高度 280；smart video splitter 节点最小尺寸为 350×700，上传视频、切换模式等自动布局只会补足或扩大尺寸，不会缩小用户手动设置的尺寸。
 - `web/toolkit.css` 是唯一主样式清单，按顺序导入 `web/styles/base.css`、`prompt.css`、`config-editor.css`、`smart-video-splitter.css`；`tooltip.css` 只在启用定制卡片时按需加载，每个样式 ID 只安装一次。
 - 工作流状态变更优先调用当前 ComfyUI 的 `activeWorkflow.changeTracker.captureCanvasState()`；旧图变更 API 仅作兼容回退，不合成鼠标事件。
+- 选择器、提示词开关、配置编辑器和合并器的自定义 DOM controller 会在 `onConfigure` 写入原生 `widgets_values` 后重新水合；创建阶段默认值不得覆盖工作流已恢复的选择、开关、草稿或文本。
 - 执行 UI payload key 只有 `xh_rows` 和 `xh_ports`；前端通过 `parseUiPayload` 读取数组第一个 JSON 值。
 
 ### 外部契约（不得重命名）
@@ -378,7 +379,7 @@ node --test tests\frontend\*.test.mjs
 2. Checkpoint/UNET loader → `模型列表获取` → 下游 MODEL 的透传不变；第二输出 → selector 能预览配置。
 3. easy-use `easy loraStack`（含 `optional_lora_stack` 级联）→ stack adapter → selector 能按顺序获得 LoRA。
 4. 快速修改上游 loader/LoRA 后 selector 只显示最新请求结果。
-5. selector 三路连接 preview 后词条开关正确，保存并重开工作流后选择与开关状态不丢失。
+5. selector 三路连接 preview 后词条开关正确，不同配置的同位置词条开关彼此独立，保存并重开工作流后选择与开关状态不丢失。
 6. merger 空端口占位和顺序正确；display 正负文本实时/执行后显示并保持两路透传。
 7. config editor 可切换模型/配置，修改后星号位于按钮右上边框，跨模型草稿保留；保存后原配置文件更新，“添加”转为新编号并继续出现新“添加”。
 8. 无 sidecar 时 editor 创建 `模型名.txt`；错误 sidecar、无模型源元数据时提示清晰且不无故阻断模型透传。

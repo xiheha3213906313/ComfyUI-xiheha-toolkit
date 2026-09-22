@@ -11,6 +11,9 @@ except ImportError:  # Allows the test suite to import this module standalone.
     from core.prompt_utils import ensure_trailing_comma, split_prompt_lines, split_prompt_tokens
 
 
+PREVIEW_CONTEXTS_KEY = "__xh_contexts"
+
+
 def build_preview_rows(
     model_names: object,
     positive_prompts: object,
@@ -31,13 +34,22 @@ def _read_token_state(value: object) -> dict[str, Any]:
     return raw if isinstance(raw, dict) else {}
 
 
-def preview_token_key(model_name: object, side: str, index: int) -> str:
+def preview_token_key(model_name: object, side: str, index: int, context_id: object = None) -> str:
+    if isinstance(context_id, str) and context_id:
+        return json.dumps([context_id, side, int(index)], ensure_ascii=False, separators=(",", ":"))
     return f"{str(model_name or '').strip()}|{side}|{index}"
 
 
-def _is_token_enabled(state: dict[str, Any], key: str) -> bool:
-    value = state.get(key, True)
+def _is_token_enabled(state: dict[str, Any], key: str, legacy_key: str) -> bool:
+    value = state[key] if key in state else state.get(legacy_key, True)
     return value not in (False, 0, "false", "False", "off", "关闭")
+
+
+def _token_contexts(state: dict[str, Any]) -> list[str | None]:
+    raw = state.get(PREVIEW_CONTEXTS_KEY, [])
+    if not isinstance(raw, list):
+        return []
+    return [value if isinstance(value, str) and value else None for value in raw]
 
 
 def _build_preview_rows(
@@ -50,6 +62,7 @@ def _build_preview_rows(
     positives = split_prompt_lines(positive_prompts)
     negatives = split_prompt_lines(negative_prompts)
     state = _read_token_state(token_state)
+    contexts = _token_contexts(state)
     count = max(len(names), len(positives), len(negatives))
     rows: list[dict[str, object]] = []
 
@@ -59,17 +72,27 @@ def _build_preview_rows(
         negative = negatives[index] if index < len(negatives) else ""
         positive_tokens = split_prompt_tokens(positive)
         negative_tokens = split_prompt_tokens(negative)
+        context_id = contexts[index] if index < len(contexts) else None
         rows.append(
             {
                 "model_name": model_name,
+                "context_id": context_id,
                 "positive_tokens": positive_tokens,
                 "negative_tokens": negative_tokens,
                 "positive_enabled": [
-                    _is_token_enabled(state, preview_token_key(model_name, "positive", token_index))
+                    _is_token_enabled(
+                        state,
+                        preview_token_key(model_name, "positive", token_index, context_id),
+                        preview_token_key(model_name, "positive", token_index),
+                    )
                     for token_index in range(len(positive_tokens))
                 ],
                 "negative_enabled": [
-                    _is_token_enabled(state, preview_token_key(model_name, "negative", token_index))
+                    _is_token_enabled(
+                        state,
+                        preview_token_key(model_name, "negative", token_index, context_id),
+                        preview_token_key(model_name, "negative", token_index),
+                    )
                     for token_index in range(len(negative_tokens))
                 ],
             }

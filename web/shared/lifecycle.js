@@ -17,3 +17,12 @@ export function createCleanupBag() {
         },
     };
 }
+
+export function afterNodeConfigure(nodeType, restore) {
+    const originalConfigure = nodeType.prototype.onConfigure;
+    nodeType.prototype.onConfigure = function () {
+        const result = originalConfigure?.apply(this, arguments);
+        restore?.apply(this, arguments);
+        return result;
+    };
+}

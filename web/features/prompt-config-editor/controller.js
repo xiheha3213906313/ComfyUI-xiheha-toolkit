@@ -35,14 +35,20 @@ export function createPromptConfigEditorController(node) {
         currentDialog: null, cleanupModelMenu: null,
         cleanup() { this.disposed = true; this.refreshSequence += 1; cleanupEditorView(this); },
         closeDialog() { this.currentDialog?.remove(); this.currentDialog = null; },
-        saveState() {
+        restoreFromWidgets() {
+            this.refreshSequence += 1;
+            this.state = cleanEditorState(widgetValue(node, "editor_state", "{}"));
+            ensureSelections(this.state, this.infos);
+            this.render();
+        },
+        saveState({ notify = true } = {}) {
             const widget = widgetByName(node, "editor_state");
             if (widget) {
                 const value = JSON.stringify(this.state);
                 widget.value = value;
                 if (widget.inputEl) widget.inputEl.value = value;
             }
-            markDirty(node);
+            if (notify) markDirty(node);
         },
         currentInfo() { return this.infos.find((info) => sourceKey(info) === this.state.selectedSource) || null; },
         selectSource(key) {
@@ -108,8 +114,10 @@ export function createPromptConfigEditorController(node) {
             try {
                 const infos = await inspectSources(sources);
                 if (sequence !== this.refreshSequence || this.disposed) return;
+                const stateBeforeNormalization = JSON.stringify(this.state);
                 this.infos = infos; this.error = null; ensureSelections(this.state, this.infos);
-                this.saveState(); this.render();
+                this.saveState({ notify: JSON.stringify(this.state) !== stateBeforeNormalization });
+                this.render();
             } catch (error) {
                 if (sequence !== this.refreshSequence || this.disposed) return;
                 this.infos = []; this.error = error.message || String(error);
